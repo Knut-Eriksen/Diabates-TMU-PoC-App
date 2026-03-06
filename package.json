@@ -9,10 +9,24 @@
     "start": "react-native start",
     "test": "jest"
   },
+  "codegenConfig": {
+    "name": "AppSpecs",
+    "type": "modules",
+    "jsSrcsDir": "specs",
+    "android": {
+      "javaPackageName": "com.sampleapp.specs"
+    },
+    "ios": {
+      "modulesProvider": {
+        "NativeSampleModule": "NativeSampleModuleProvider"
+      }
+    }
+  },
   "dependencies": {
+    "@react-native/new-app-screen": "0.84.0",
     "react": "19.2.3",
     "react-native": "0.84.0",
-    "@react-native/new-app-screen": "0.84.0",
+    "react-native-fs": "^2.20.0",
     "react-native-safe-area-context": "^5.5.2"
   },
   "devDependencies": {

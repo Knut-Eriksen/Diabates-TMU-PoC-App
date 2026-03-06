@@ -9,6 +9,17 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-SampleApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-SampleApp.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		725B730A2F5A149F00911C34 /* NativeSampleModuleProvider.mm in Sources */ = {isa = PBXBuildFile; fileRef = 725B73092F5A149F00911C34 /* NativeSampleModuleProvider.mm */; };
+		725B732D2F5A377300911C34 /* NativeSampleModule.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 725B732B2F5A377300911C34 /* NativeSampleModule.cpp */; };
+		725B732E2F5A377300911C34 /* GlucoseSession.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 725B73252F5A377300911C34 /* GlucoseSession.cpp */; };
+		725B732F2F5A377300911C34 /* inference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 725B73272F5A377300911C34 /* inference.cpp */; };
+		725B737B2F5AF0E800911C34 /* pos_mask.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73772F5AF0E800911C34 /* pos_mask.bin */; };
+		725B737C2F5AF0E800911C34 /* head_clause_weights.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73732F5AF0E800911C34 /* head_clause_weights.bin */; };
+		725B737D2F5AF0E800911C34 /* head_intercept.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73742F5AF0E800911C34 /* head_intercept.bin */; };
+		725B737E2F5AF0E800911C34 /* y_tm.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73792F5AF0E800911C34 /* y_tm.bin */; };
+		725B737F2F5AF0E800911C34 /* neg_mask.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73762F5AF0E800911C34 /* neg_mask.bin */; };
+		725B73802F5AF0E800911C34 /* thresholds.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73782F5AF0E800911C34 /* thresholds.bin */; };
+		725B73812F5AF0E800911C34 /* meta.json in Resources */ = {isa = PBXBuildFile; fileRef = 725B73752F5AF0E800911C34 /* meta.json */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		F309BC49B688FBF408E171EE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
@@ -22,6 +33,23 @@
 		3B4392A12AC88292D35C810B /* Pods-SampleApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SampleApp.debug.xcconfig"; path = "Target Support Files/Pods-SampleApp/Pods-SampleApp.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-SampleApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SampleApp.release.xcconfig"; path = "Target Support Files/Pods-SampleApp/Pods-SampleApp.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-SampleApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-SampleApp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		725B73082F5A149F00911C34 /* NativeSampleModuleProvider.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeSampleModuleProvider.h; sourceTree = "<group>"; };
+		725B73092F5A149F00911C34 /* NativeSampleModuleProvider.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NativeSampleModuleProvider.mm; sourceTree = "<group>"; };
+		725B73242F5A377300911C34 /* GlucoseSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GlucoseSession.h; sourceTree = "<group>"; };
+		725B73252F5A377300911C34 /* GlucoseSession.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GlucoseSession.cpp; sourceTree = "<group>"; };
+		725B73262F5A377300911C34 /* inference.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = inference.h; sourceTree = "<group>"; };
+		725B73272F5A377300911C34 /* inference.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = inference.cpp; sourceTree = "<group>"; };
+		725B73282F5A377300911C34 /* inference_types.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = inference_types.h; sourceTree = "<group>"; };
+		725B73292F5A377300911C34 /* json.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = json.hpp; sourceTree = "<group>"; };
+		725B732A2F5A377300911C34 /* NativeSampleModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeSampleModule.h; sourceTree = "<group>"; };
+		725B732B2F5A377300911C34 /* NativeSampleModule.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = NativeSampleModule.cpp; sourceTree = "<group>"; };
+		725B73732F5AF0E800911C34 /* head_clause_weights.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = head_clause_weights.bin; sourceTree = "<group>"; };
+		725B73742F5AF0E800911C34 /* head_intercept.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = head_intercept.bin; sourceTree = "<group>"; };
+		725B73752F5AF0E800911C34 /* meta.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = meta.json; sourceTree = "<group>"; };
+		725B73762F5AF0E800911C34 /* neg_mask.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = neg_mask.bin; sourceTree = "<group>"; };
+		725B73772F5AF0E800911C34 /* pos_mask.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = pos_mask.bin; sourceTree = "<group>"; };
+		725B73782F5AF0E800911C34 /* thresholds.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = thresholds.bin; sourceTree = "<group>"; };
+		725B73792F5AF0E800911C34 /* y_tm.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = y_tm.bin; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = SampleApp/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = SampleApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -42,6 +70,7 @@
 		13B07FAE1A68108700A75B9A /* SampleApp */ = {
 			isa = PBXGroup;
 			children = (
+				725B737A2F5AF0E800911C34 /* mobile_export */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
@@ -60,6 +89,37 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		725B732C2F5A377300911C34 /* shared */ = {
+			isa = PBXGroup;
+			children = (
+				725B73242F5A377300911C34 /* GlucoseSession.h */,
+				725B73252F5A377300911C34 /* GlucoseSession.cpp */,
+				725B73262F5A377300911C34 /* inference.h */,
+				725B73272F5A377300911C34 /* inference.cpp */,
+				725B73282F5A377300911C34 /* inference_types.h */,
+				725B73292F5A377300911C34 /* json.hpp */,
+				725B732A2F5A377300911C34 /* NativeSampleModule.h */,
+				725B732B2F5A377300911C34 /* NativeSampleModule.cpp */,
+			);
+			name = shared;
+			path = ../shared;
+			sourceTree = SOURCE_ROOT;
+		};
+		725B737A2F5AF0E800911C34 /* mobile_export */ = {
+			isa = PBXGroup;
+			children = (
+				725B73732F5AF0E800911C34 /* head_clause_weights.bin */,
+				725B73742F5AF0E800911C34 /* head_intercept.bin */,
+				725B73752F5AF0E800911C34 /* meta.json */,
+				725B73762F5AF0E800911C34 /* neg_mask.bin */,
+				725B73772F5AF0E800911C34 /* pos_mask.bin */,
+				725B73782F5AF0E800911C34 /* thresholds.bin */,
+				725B73792F5AF0E800911C34 /* y_tm.bin */,
+			);
+			name = mobile_export;
+			path = "/Users/Knut/Bachelor-2026/Code/Diabates-TMU-PoC/Py-TMU/trial_2_30min_nolag_nozeroremoval_PoC/mobile_export";
+			sourceTree = "<absolute>";
+		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
 			isa = PBXGroup;
 			children = (
@@ -70,6 +130,9 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				725B732C2F5A377300911C34 /* shared */,
+				725B73082F5A149F00911C34 /* NativeSampleModuleProvider.h */,
+				725B73092F5A149F00911C34 /* NativeSampleModuleProvider.mm */,
 				13B07FAE1A68108700A75B9A /* SampleApp */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -161,6 +224,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				F309BC49B688FBF408E171EE /* PrivacyInfo.xcprivacy in Resources */,
+				725B737B2F5AF0E800911C34 /* pos_mask.bin in Resources */,
+				725B737C2F5AF0E800911C34 /* head_clause_weights.bin in Resources */,
+				725B737D2F5AF0E800911C34 /* head_intercept.bin in Resources */,
+				725B737E2F5AF0E800911C34 /* y_tm.bin in Resources */,
+				725B737F2F5AF0E800911C34 /* neg_mask.bin in Resources */,
+				725B73802F5AF0E800911C34 /* thresholds.bin in Resources */,
+				725B73812F5AF0E800911C34 /* meta.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,9 +261,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-SampleApp/Pods-SampleApp-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-SampleApp/Pods-SampleApp-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -230,9 +304,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-SampleApp/Pods-SampleApp-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-SampleApp/Pods-SampleApp-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -246,6 +324,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				725B732D2F5A377300911C34 /* NativeSampleModule.cpp in Sources */,
+				725B732E2F5A377300911C34 /* GlucoseSession.cpp in Sources */,
+				725B732F2F5A377300911C34 /* inference.cpp in Sources */,
+				725B730A2F5A149F00911C34 /* NativeSampleModuleProvider.mm in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
