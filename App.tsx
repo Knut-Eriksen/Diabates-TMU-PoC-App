@@ -301,6 +301,7 @@ export default function App() {
       return;
     }
 
+    const tButtonStart = performance.now();
     try {
       const fieldCount = line.split(',').length;
       if (fieldCount === 11) {
@@ -318,13 +319,22 @@ export default function App() {
       const count = readingCount + 1;
       setReadingCount(count);
 
+      const tPredictStart = performance.now();
       const result = NativeSampleModule.predict();
+      const predictMs = performance.now() - tPredictStart;
+      const totalMs = performance.now() - tButtonStart;
       if (isNaN(result)) {
         setPrediction(null);
-        addLog(`Reading #${count} added — not ready yet.`, 'warn');
+        addLog(
+          `Reading #${count} added — not ready yet. predict=${predictMs.toFixed(2)}ms total=${totalMs.toFixed(2)}ms`,
+          'warn',
+        );
       } else {
         setPrediction(result);
-        addLog(`Reading #${count} → ${result.toFixed(1)} mg/dL`, 'ok');
+        addLog(
+          `Reading #${count} → ${result.toFixed(1)} mg/dL (predict=${predictMs.toFixed(2)}ms total=${totalMs.toFixed(2)}ms)`,
+          'ok',
+        );
       }
     } catch (e: any) {
       addLog(`Error: ${e?.message ?? e}`, 'err');
