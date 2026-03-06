@@ -1,3 +1,5 @@
+// defines the core data structures
+
 #pragma once
 
 #include <cstdint>
@@ -5,9 +7,7 @@
 #include <string>
 #include <cmath>
 
-// ─────────────────────────────────────────
-//  Row  –  one CGM reading + engineered features
-// ─────────────────────────────────────────
+// One row is one GLucose reading + engineered features
 struct Row {
     // Raw columns (from CSV)
     int64_t date          = 0;
@@ -22,43 +22,41 @@ struct Row {
     double bolus          = 0.0;
     double basal          = 0.0;
 
-    // Engineered: rolling 30-min window
+    // engineered: rolling
     double glucose_rolling_mean_30min = NAN;
     double glucose_volatility         = NAN;
     double time_in_range              = NAN;
 
-    // Engineered: first/second differences
+    // engineered: diffs
     double glucose_change       = NAN;
     double glucose_acceleration = NAN;
 
-    // Engineered: wall-clock time
+    // engineered: time
     int hour   = -1;
     int minute = -1;
 
-    // Engineered: hourly group stats
+    // engineered: hourly group
     double hour_mean_diff = NAN;
     double hour_trend     = NAN;
     double hour_range     = NAN;
 };
 
-// ─────────────────────────────────────────
-//  Model  –  everything needed for inference
-// ─────────────────────────────────────────
+// Holsd everything needed to run the saved Tsetlin Machine
 struct Model {
     int n_features   = 0;
     int n_bits_total = 0;
     int n_clauses    = 0;
     int n_words      = 0;
 
-    // Per-feature threshold bins
-    std::vector<int32_t> threshold_offsets;   // length = n_features + 1
-    std::vector<float>   thresholds;          // flat array of all thresholds
+    // Thresholds
+    std::vector<int32_t> threshold_offsets;
+    std::vector<float>   thresholds;
 
-    // Tsetlin clause rules (packed uint64 bitmasks)
-    std::vector<uint64_t> pos_mask;           // [n_clauses * n_words]
-    std::vector<uint64_t> neg_mask;           // [n_clauses * n_words]
+    // Clause rules
+    std::vector<uint64_t> pos_mask;
+    std::vector<uint64_t> neg_mask;
 
-    // Ridge regression head
-    std::vector<float> head_clause_weights;   // [n_clauses]
+    // Ridge head stuff
+    std::vector<float> head_clause_weights;
     float              head_intercept = 0.0f;
 };

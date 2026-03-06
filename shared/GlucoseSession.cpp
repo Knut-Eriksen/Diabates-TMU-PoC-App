@@ -1,4 +1,5 @@
 #include "GlucoseSession.h"
+#include "inference.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -16,33 +17,18 @@ using json = nlohmann::json;
 
 namespace glucose {
 
-// ─────────────────────────────────────────
-//  Internal helpers
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Internal helpers ─────────────────────────────────────────
 
 namespace {
 
-static time_t portable_timegm_local(std::tm* t) {
-#ifdef _WIN32
-    char* old_tz = getenv("TZ");
-    _putenv("TZ=UTC"); _tzset();
-    time_t ret = mktime(t);
-    if (old_tz) { std::string r = std::string("TZ=") + old_tz; _putenv(r.c_str()); }
-    else        { _putenv("TZ="); }
-    _tzset();
-    return ret;
-#else
-    return timegm(t);
-#endif
-}
-
+// parses "YYYY-MM-DD HH:MM:SS"
 static int64_t parse_datetime_string(const std::string& s) {
     std::tm tm{};
     std::istringstream ss(s);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
     if (ss.fail())
         throw std::runtime_error("Invalid datetime string: " + s);
-    return static_cast<int64_t>(portable_timegm_local(&tm));
+    return static_cast<int64_t>(timegm(&tm));
 }
 
 // Accepts "YYYY-MM-DD HH:MM:SS", Unix seconds, or Unix nanoseconds
@@ -54,6 +40,7 @@ static int64_t parse_date_cell(const std::string& cell) {
     return static_cast<int64_t>(v);
 }
 
+// split the csv into a vector
 static std::vector<std::string> split_csv(const std::string& line) {
     std::vector<std::string> cells;
     std::stringstream ss(line);
@@ -63,6 +50,7 @@ static std::vector<std::string> split_csv(const std::string& line) {
     return cells;
 }
 
+// Reads one CSV cell by index and converts it to a double, throwing a clear error if missing or invalid.
 static double cell_double(const std::vector<std::string>& cells,
                            size_t idx, const char* name) {
     if (idx >= cells.size())
@@ -74,29 +62,8 @@ static double cell_double(const std::vector<std::string>& cells,
     }
 }
 
-// Parse a 21-field engineered row.
-// Column order matches C++ comparison CSV exactly:
-//   0  date
-//   1  glucose_level
-//   2  missing_bg          (skipped — not a model feature)
-//   3  meal
-//   4  exercise
-//   5  basis_heart_rate
-//   6  basis_gsr           (skipped — not a model feature)
-//   7  basis_steps
-//   8  basis_sleep
-//   9  bolus
-//   10 basal
-//   11 glucose_rolling_mean_30min
-//   12 glucose_volatility
-//   13 time_in_range
-//   14 glucose_change
-//   15 glucose_acceleration
-//   16 hour
-//   17 minute
-//   18 hour_mean_diff
-//   19 hour_trend
-//   20 hour_range
+// ONLY FOR TESTING
+// Parse a 21 field engineered row.
 static Row parse_engineered_csv_line(const std::string& line) {
     auto cells = split_csv(line);
     if (cells.size() != 21)
@@ -129,6 +96,7 @@ static Row parse_engineered_csv_line(const std::string& line) {
     return row;
 }
 
+// Tries to find out if model expects date as seconds or nanoseconds. Can maybe remove
 static bool infer_date_expects_nanos(const Model& model,
                                       const std::vector<std::string>& feature_names) {
     auto it = std::find(feature_names.begin(), feature_names.end(), "date");
@@ -145,11 +113,13 @@ static bool infer_date_expects_nanos(const Model& model,
 
 } // anonymous namespace
 
-// ─────────────────────────────────────────
-//  Setup
-// ─────────────────────────────────────────
 
+// ───────────────────────────────────────── Setup ─────────────────────────────────────────
+
+// loads the mopdel for live inference session
 void GlucoseSession::loadModel(const std::string& export_dir) {
+
+    // Locate meta.json path
     std::string meta_path = export_dir;
     if (!meta_path.empty() && meta_path.back() != '/' && meta_path.back() != '\\')
         meta_path += '/';
@@ -168,6 +138,7 @@ void GlucoseSession::loadModel(const std::string& export_dir) {
     json meta;
     f >> meta;
 
+    // remove mean and range and replace with those in 
     hourly_mean_.clear();
     hourly_range_.clear();
 
@@ -183,10 +154,9 @@ void GlucoseSession::loadModel(const std::string& export_dir) {
     model_loaded_ = true;
 }
 
-// ─────────────────────────────────────────
-//  Per-reading update
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Per-reading update ─────────────────────────────────────────
 
+// parses one row, appends to hostory, remove old rows from history, compute engineered features, overwrite hour-based features with training hourly stats
 void GlucoseSession::addReading(const std::string& csv_line) {
     Row row = parse_csv_line(csv_line);
     history_.push_back(row);
@@ -195,23 +165,20 @@ void GlucoseSession::addReading(const std::string& csv_line) {
     apply_training_hourly_stats();
 }
 
+// does the same but for already engineered rows. 
 void GlucoseSession::addEngineeredReading(const std::string& csv_line) {
     Row row = parse_engineered_csv_line(csv_line);
     history_.push_back(row);
     while ((int)history_.size() > MAX_HISTORY) history_.pop_front();
-    // Features are pre-computed, but still override hour_mean_diff / hour_range
-    // with training stats so they match Python exactly.
     apply_training_hourly_stats();
 }
 
-// ─────────────────────────────────────────
-//  Prediction
-// ─────────────────────────────────────────
-int min_readings_required_ = 6;
+// ───────────────────────────────────────── Prediction ─────────────────────────────────────────
 
+// Complete prediciton pipeline
 float GlucoseSession::predict() const {
     if (!model_loaded_ || history_.empty()) return NAN;
-    if ((int)history_.size() < min_readings_required_) return NAN;
+    if ((int)history_.size() < MIN_READINGS_REQUIRED) return NAN;
 
     for (int i = (int)history_.size() - 1; i >= 0; --i) {
         const Row& r = history_[i];
@@ -226,7 +193,7 @@ float GlucoseSession::predict() const {
                 if (date_expects_nanos_) d *= 1e9;
                 x.push_back(d);
             } else {
-                x.push_back(get_feature_value(r, fn));
+                x.push_back(::get_feature_value(r, fn));
             }
         }
 
@@ -236,18 +203,15 @@ float GlucoseSession::predict() const {
     return NAN;
 }
 
-// ─────────────────────────────────────────
-//  Housekeeping
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Reset Button ─────────────────────────────────────────
 
 void GlucoseSession::reset() {
     history_.clear();
 }
 
-// ─────────────────────────────────────────
-//  Internal: re-engineer features on raw history
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Internal: re-engineer features on raw history ─────────────────────────────────────────
 
+// Recompute features for all rows after a new raw reading
 void GlucoseSession::recompute_features() {
     if (history_.empty()) return;
 
@@ -268,21 +232,7 @@ void GlucoseSession::recompute_features() {
     }
 }
 
-// ─────────────────────────────────────────
-//  Override hour_mean_diff and hour_range with training-set stats.
-//
-//  Python LivePredictor does:
-//    hour_mean_diff = glucose - HOURLY_MEAN[hour]   (from model_metadata.json)
-//    hour_range     = HOURLY_RANGE[hour]             (from model_metadata.json)
-//
-//  We must do the same — computing these from the live buffer gives different
-//  numbers and causes prediction error (~13 mg/dL in testing).
-//
-//  hour_trend is NOT overridden — Python computes it from the buffer too
-//  (rolling(3, min_periods=1).mean() grouped by hour), which is what
-//  our C++ engineer_features already does.
-// ─────────────────────────────────────────
-
+// overwrite hour based features with training hourly stats
 void GlucoseSession::apply_training_hourly_stats() {
     if (hourly_mean_.empty() && hourly_range_.empty()) return;
 

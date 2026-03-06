@@ -8,6 +8,7 @@
 
 namespace facebook::react {
 
+// Defines the public native methods exposed to JavaScript (the interface JS sees)
 class NativeSampleModule
     : public NativeSampleModuleCxxSpec<NativeSampleModule> {
 public:
@@ -18,17 +19,15 @@ public:
     void loadModel(jsi::Runtime& rt, std::string exportDir);
 
     // Add one CGM reading. Format (no header):
-    //   "YYYY-MM-DD HH:MM:SS,glucose,missing_bg,meal,exercise,
-    //    heart_rate,gsr,steps,sleep,bolus,basal"
+    // "YYYY-MM-DD HH:MM:SS,glucose,missing_bg,meal,exercise,heart_rate,gsr,steps,sleep,bolus,basal"
     // Call every 5 minutes as new sensor data arrives.
     void addReading(jsi::Runtime& rt, std::string csvLine);
 
-    // Add one fully engineered reading (all model features present, no header).
+    // Add one fully engineered reading. ONLY USED FOR DEBUGGING AND TESTING
     void addEngineeredReading(jsi::Runtime& rt, std::string csvLine);
 
     // Return the predicted glucose for the most recent complete row.
-    // Returns NaN (as a double) if the model isn't loaded or there isn't
-    // enough history yet. Check with isNaN() on the JS side.
+    // Returns NaN (as a double) if the model isn't loaded or there isn't enough history yet. Check with isNaN() on the JS side.
     double predict(jsi::Runtime& rt);
 
     // Clear accumulated history. Model stays loaded.

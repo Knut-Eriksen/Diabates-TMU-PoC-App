@@ -1,7 +1,8 @@
+// C++ version of LivePredictor
+
 #pragma once
 
 #include "inference_types.h"
-#include "inference.h"
 
 #include <deque>
 #include <string>
@@ -16,17 +17,10 @@ public:
     void loadModel(const std::string& export_dir);
 
     // Add one raw 11-field CSV line — features computed automatically.
-    // Format: "YYYY-MM-DD HH:MM:SS,glucose,missing_bg,meal,exercise,
-    //          heart_rate,gsr,steps,sleep,bolus,basal"
+    // Format: "YYYY-MM-DD HH:MM:SS,glucose,missing_bg,meal,exercise,heart_rate,gsr,steps,sleep,bolus,basal"
     void addReading(const std::string& csv_line);
 
     // Add one fully-engineered 21-field CSV line — features used as-is.
-    // Column order:
-    //   date, glucose_level, missing_bg, meal, exercise,
-    //   basis_heart_rate, basis_gsr, basis_steps, basis_sleep, bolus, basal,
-    //   glucose_rolling_mean_30min, glucose_volatility, time_in_range,
-    //   glucose_change, glucose_acceleration, hour, minute,
-    //   hour_mean_diff, hour_trend, hour_range
     void addEngineeredReading(const std::string& csv_line);
 
     // Returns predicted glucose for the most recent complete row.
@@ -36,10 +30,8 @@ public:
     // Clear history. Model stays loaded.
     void reset();
 
-    bool isModelLoaded() const { return model_loaded_; }
-    int  historySize()   const { return (int)history_.size(); }
-
 private:
+    static constexpr int MIN_READINGS_REQUIRED = 6; // minimum reading to get a prediction
     static constexpr int MAX_HISTORY = 200;
 
     Model                         model_;
@@ -49,8 +41,8 @@ private:
     bool                          date_expects_nanos_ = false;
 
     // Loaded from meta.json — used to match Python LivePredictor exactly
-    std::unordered_map<int, double> hourly_mean_;   // hour (0-23) → mean glucose
-    std::unordered_map<int, double> hourly_range_;  // hour (0-23) → glucose range
+    std::unordered_map<int, double> hourly_mean_;  
+    std::unordered_map<int, double> hourly_range_;
 
     void recompute_features();
     void apply_training_hourly_stats();  // overwrites hour_mean_diff / hour_range

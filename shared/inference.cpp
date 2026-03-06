@@ -15,12 +15,12 @@
 using json = nlohmann::json;
 using namespace std;
 
+// Helper for converting from seconds to nanoseconds
 static constexpr int64_t kUnixNanosPerSecond = 1000000000LL;
 
-// ─────────────────────────────────────────
-//  Internal file helpers
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Internal file helpers ─────────────────────────────────────────
 
+// Build folder paths without double slashes (//)
 static string join_path(const string& a, const string& b) {
     if (a.empty()) return b;
     char last = a.back();
@@ -28,6 +28,7 @@ static string join_path(const string& a, const string& b) {
     return a + "/" + b;
 }
 
+// Loads and parses json files
 static json read_json(const string& path) {
     ifstream f(path);
     if (!f) throw runtime_error("Failed to open JSON: " + path);
@@ -36,20 +37,27 @@ static json read_json(const string& path) {
     return j;
 }
 
+//template makes the function work with any number type
 template <typename T>
 static vector<T> read_binary_vec(const string& path) {
+    //Opens the file at path and reads raw bytes
     ifstream f(path, ios::binary);
     if (!f) throw runtime_error("Failed to open binary file: " + path);
 
+    //Get file sizes by moving to end of the file and asking where it is
     f.seekg(0, ios::end);
     streamsize bytes = f.tellg();
     f.seekg(0, ios::beg);
 
+    //cheks if filesize is divisable by type size. viktig
     if (bytes % (streamsize)sizeof(T) != 0)
         throw runtime_error("File size not multiple of type size: " + path);
 
+    //Compute number of elements and create vector with type
     size_t n = (size_t)(bytes / (streamsize)sizeof(T));
     vector<T> out(n);
+
+    // Read raw bytes into the vectors memory
     if (!out.empty()) {
         f.read(reinterpret_cast<char*>(out.data()), bytes);
         if (!f) throw runtime_error("Failed to read binary file: " + path);
@@ -57,6 +65,7 @@ static vector<T> read_binary_vec(const string& path) {
     return out;
 }
 
+// Loads a .bin file and checks if it contains exactly one float
 static float read_single_float(const string& path) {
     auto v = read_binary_vec<float>(path);
     if (v.size() != 1)
@@ -64,39 +73,21 @@ static float read_single_float(const string& path) {
     return v[0];
 }
 
-// ─────────────────────────────────────────
-//  Time
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Time ─────────────────────────────────────────
 
-static time_t portable_timegm(tm* t) {
-#ifdef _WIN32
-    char* old_tz = getenv("TZ");
-    _putenv("TZ=UTC");
-    _tzset();
-    time_t ret = mktime(t);
-    if (old_tz) { string r = string("TZ=") + old_tz; _putenv(r.c_str()); }
-    else         { _putenv("TZ="); }
-    _tzset();
-    return ret;
-#else
-    return timegm(t);
-#endif
-}
-
+// Convert datetime into unix seconds
 static int64_t parse_timestamp_to_unix(const std::string& s) {
     std::tm tm{};
     std::istringstream ss(s);
 
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
 
-    time_t t = portable_timegm(&tm);
+    time_t t = timegm(&tm);
     return static_cast<int64_t>(t);
 }
+// ───────────────────────────────────────── CSV parsing ─────────────────────────────────────────
 
-// ─────────────────────────────────────────
-//  CSV parsing
-// ─────────────────────────────────────────
-
+// This parses a raw 11-field CSV line
 Row parse_csv_line(const string& line) {
     stringstream ss(line);
     string cell;
@@ -117,29 +108,7 @@ Row parse_csv_line(const string& line) {
     return row;
 }
 
-vector<Row> load_csv_file(const string& path) {
-    ifstream iFile(path);
-    if (!iFile) throw runtime_error("Failed to open CSV: " + path);
-
-    string line;
-    vector<Row> rows;
-
-    getline(iFile, line); // skip header
-
-    while (getline(iFile, line)) {
-        if (line.empty()) continue;
-        rows.push_back(parse_csv_line(line));
-    }
-
-    stable_sort(rows.begin(), rows.end(),
-        [](const Row& a, const Row& b) { return a.date < b.date; });
-
-    return rows;
-}
-
-// ─────────────────────────────────────────
-//  Feature engineering
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Feature engineering ─────────────────────────────────────────
 
 static bool in_range_70_180(double g) {
     return g >= 70.0 && g <= 180.0;
@@ -147,18 +116,28 @@ static bool in_range_70_180(double g) {
 
 void add_time_features(vector<Row>& rows) {
     for (auto& row : rows) {
+        //Convert type into time_t
         time_t t = static_cast<time_t>(row.date);
+
+        //creates stuct called tm as type tm
         tm tm_val = *gmtime(&t);
+
+        //add the tm values into row
         row.hour   = tm_val.tm_hour;
         row.minute = tm_val.tm_min;
     }
 }
 
 void add_rolling_30min_features(vector<Row>& rows) {
-    const int64_t window_sec = 30 * 60;
-    deque<size_t> window;
-    double sum = 0.0, sum2 = 0.0, sumIR = 0.0;
+    const int64_t window_sec = 30 * 60; // 1800 seconds
 
+    //Window queue
+    deque<size_t> window;
+    double sum = 0.0;
+    double sum2 = 0.0;
+    double sumIR = 0.0;
+
+    // Loop though rows one by one
     for (size_t i = 0; i < rows.size(); i++) {
         const int64_t t  = rows[i].date;
         const double  g  = rows[i].glucose_level;
@@ -168,6 +147,7 @@ void add_rolling_30min_features(vector<Row>& rows) {
         sum2  += g * g;
         sumIR += in_range_70_180(g) ? 1.0 : 0.0;
 
+        // Remove old rows, outside 30 min
         while (!window.empty() && rows[window.front()].date <= t - window_sec) {
             size_t j  = window.front(); window.pop_front();
             double gj = rows[j].glucose_level;
@@ -176,10 +156,12 @@ void add_rolling_30min_features(vector<Row>& rows) {
             sumIR -= in_range_70_180(gj) ? 1.0 : 0.0;
         }
 
+        //Compute the rolling mean and time in range
         const int count = static_cast<int>(window.size());
         rows[i].glucose_rolling_mean_30min = sum / count;
         rows[i].time_in_range              = sumIR / count;
 
+        // rolling standard deviation
         if (count >= 2) {
             const double mean     = sum / count;
             const double var_samp = (sum2 - count * mean * mean) / (count - 1);
@@ -190,31 +172,40 @@ void add_rolling_30min_features(vector<Row>& rows) {
     }
 }
 
+
 void add_diff_features(vector<Row>& rows) {
     if (rows.empty()) return;
 
+    //set first row to NAN because you cant calculate change from before data starts
     rows[0].glucose_change       = NAN;
     rows[0].glucose_acceleration = NAN;
 
+     // If more than or = two rows, set the first change at index 1, no acceleration
     if (rows.size() >= 2) {
         rows[1].glucose_change       = rows[1].glucose_level - rows[0].glucose_level;
         rows[1].glucose_acceleration = NAN;
     }
 
+    //Start at row 2, change is current glucose - previous, acceleration is current change - previous
     for (size_t i = 2; i < rows.size(); i++) {
         rows[i].glucose_change       = rows[i].glucose_level - rows[i-1].glucose_level;
         rows[i].glucose_acceleration = rows[i].glucose_change - rows[i-1].glucose_change;
     }
 }
 
+
 void add_hourly_group_features(vector<Row>& rows) {
+     // group: hour -> indices
     unordered_map<int, vector<size_t>> groups;
+
     for (size_t i = 0; i < rows.size(); ++i)
         groups[rows[i].hour].push_back(i);
 
+    // process each hour group
     for (auto& [hour, idxs] : groups) {
         if (idxs.empty()) continue;
 
+        // 🔹 IMPORTANT: ensure time order inside hour (matches pandas)
         stable_sort(idxs.begin(), idxs.end(),
             [&](size_t a, size_t b) { return rows[a].date < rows[b].date; });
 
@@ -262,13 +253,11 @@ void engineer_features(vector<Row>& rows) {
     add_diff_features(rows);
     add_time_features(rows);
     add_hourly_group_features(rows);
-    // No debug cout — safe to call on every new reading
 }
 
-// ─────────────────────────────────────────
-//  NaN helpers
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── NaN helpers ─────────────────────────────────────────
 
+// Checks each value in row if its NAN, returns true if one in a row is NAN
 bool row_has_nan(const Row& row) {
     return
         isnan(row.glucose_rolling_mean_30min) ||
@@ -283,6 +272,7 @@ bool row_has_nan(const Row& row) {
         row.minute < 0;
 }
 
+// Remove the rows that include one NAN value
 void drop_nan_rows(vector<Row>& rows) {
     rows.erase(
         remove_if(rows.begin(), rows.end(),
@@ -290,13 +280,12 @@ void drop_nan_rows(vector<Row>& rows) {
         rows.end());
 }
 
-// ─────────────────────────────────────────
-//  Feature matrix
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Feature matrix ─────────────────────────────────────────
 
 double get_feature_value(const Row& row, const string& name) {
+
+    // Raw values
     // Training pipeline stores date as pandas datetime int64 (Unix nanoseconds).
-    // Keep internal time arithmetic in seconds, but expose the model feature in ns.
     if (name == "date")                       return static_cast<double>(row.date * kUnixNanosPerSecond);
     if (name == "meal")                       return row.meal;
     if (name == "exercise")                   return row.exercise;
@@ -305,6 +294,8 @@ double get_feature_value(const Row& row, const string& name) {
     if (name == "basis_sleep")                return row.basis_sleep;
     if (name == "bolus")                      return row.bolus;
     if (name == "basal")                      return row.basal;
+    
+    //engineered
     if (name == "glucose_rolling_mean_30min") return row.glucose_rolling_mean_30min;
     if (name == "glucose_volatility")         return row.glucose_volatility;
     if (name == "time_in_range")              return row.time_in_range;
@@ -318,27 +309,9 @@ double get_feature_value(const Row& row, const string& name) {
     throw runtime_error("Unknown feature name: " + name);
 }
 
-vector<vector<double>> build_X_real(
-        const vector<Row>& rows,
-        const vector<string>& feature_names) {
+// ───────────────────────────────────────── Model loading ─────────────────────────────────────────
 
-    vector<vector<double>> X;
-    X.reserve(rows.size());
-
-    for (const auto& r : rows) {
-        vector<double> x;
-        x.reserve(feature_names.size());
-        for (const auto& fn : feature_names)
-            x.push_back(get_feature_value(r, fn));
-        X.push_back(move(x));
-    }
-    return X;
-}
-
-// ─────────────────────────────────────────
-//  Model loading
-// ─────────────────────────────────────────
-
+// Check if meta.json includes feature_names
 vector<string> load_feature_names_from_meta(const string& path) {
     ifstream file(path);
     if (!file) throw runtime_error("Failed to open meta.json: " + path);
@@ -348,40 +321,44 @@ vector<string> load_feature_names_from_meta(const string& path) {
     return j["feature_names"].get<vector<string>>();
 }
 
-Model load_model_from_export_dir(const string& export_dir,
-                                  const string& meta_path) {
+// Load all neccecary files from export and check if its junk
+Model load_model_from_export_dir(const string& export_dir, const string& meta_path) {
     Model model;
+
+    //Read meta.json
     json meta = read_json(meta_path);
 
+    // Required fields from meta.json
     model.n_features   = meta.at("n_features").get<int>();
     model.n_bits_total = meta.at("n_bits_total").get<int>();
     model.n_clauses    = meta.at("n_clauses").get<int>();
     model.n_words      = meta.at("n_words").get<int>();
 
+    // read from json into model by converting to an interger
     auto offsets = meta.at("threshold_offsets");
-    if (!offsets.is_array())
-        throw runtime_error("threshold_offsets is not an array in meta.json");
-
+    if (!offsets.is_array()) throw runtime_error("threshold_offsets is not an array in meta.json");
     model.threshold_offsets.reserve(offsets.size());
-    for (auto& v : offsets)
-        model.threshold_offsets.push_back((int32_t)v.get<int>());
+    for (auto& v : offsets) model.threshold_offsets.push_back((int32_t)v.get<int>());
 
+    //there should always be +1 offset than features
     if ((int)model.threshold_offsets.size() != model.n_features + 1)
         throw runtime_error("threshold_offsets length != n_features + 1");
 
+    // Get file names from meta.json or set it as default value
     const string thresholds_file         = meta.value("thresholds_file",         "thresholds.bin");
     const string pos_mask_file           = meta.value("pos_mask_file",           "pos_mask.bin");
     const string neg_mask_file           = meta.value("neg_mask_file",           "neg_mask.bin");
     const string head_clause_weights_file = meta.value("head_clause_weights_file", "head_clause_weights.bin");
     const string head_int_file           = meta.value("head_intercept_file",     "head_intercept.bin");
 
+    // Load binary files (blobs) with the path as argument
     model.thresholds           = read_binary_vec<float>   (join_path(export_dir, thresholds_file));
     model.pos_mask             = read_binary_vec<uint64_t>(join_path(export_dir, pos_mask_file));
     model.neg_mask             = read_binary_vec<uint64_t>(join_path(export_dir, neg_mask_file));
     model.head_clause_weights  = read_binary_vec<float>   (join_path(export_dir, head_clause_weights_file));
     model.head_intercept       = read_single_float        (join_path(export_dir, head_int_file));
 
-    // Validate sizes
+    // Validate sizes, if everything matches model now contains all rules, thresholds, and ridge head weights needed for inference
     int expected_thresholds = model.threshold_offsets.back();
     if ((int)model.thresholds.size() != expected_thresholds)
         throw runtime_error("thresholds.bin size mismatch. Expected " +
@@ -399,23 +376,25 @@ Model load_model_from_export_dir(const string& export_dir,
     return model;
 }
 
-// ─────────────────────────────────────────
-//  Inference
-// ─────────────────────────────────────────
+// ───────────────────────────────────────── Inference ─────────────────────────────────────────
 
+// Turns real features into bits
 static vector<uint8_t> booleanize(const vector<double>& X_real,
                                    const Model& model) {
     if ((int)X_real.size() != model.n_features)
         throw runtime_error("X_real length != n_features");
 
+    //Create empty vector to hold all bits of all features
     vector<uint8_t> X_bool(model.n_bits_total, 0);
     int bit_index = 0;
 
+    //Loop through each feature, read its value and find both start and end of the thresholds that belongs to it
     for (int i = 0; i < model.n_features; i++) {
         double x    = X_real[i];
         int    start = model.threshold_offsets[i];
         int    end   = model.threshold_offsets[i + 1];
 
+        // Compare x against each threshold and produce bits
         for (int j = start; j < end; j++)
             X_bool[bit_index++] = (x > model.thresholds[j]) ? 1 : 0;
     }
@@ -426,9 +405,13 @@ static vector<uint8_t> booleanize(const vector<double>& X_real,
     return X_bool;
 }
 
-static vector<uint64_t> pack_bits_to_words(const vector<uint8_t>& X_bool,
-                                            int n_words) {
+// Pack bit vector into uint64 words for speed
+static vector<uint64_t> pack_bits_to_words(const vector<uint8_t>& X_bool, int n_words) {
+
+    //Create n_words amount of words all initialized to 0
     vector<uint64_t> X_words(n_words, 0ULL);
+
+    //Loop though all bits,
     for (int i = 0; i < (int)X_bool.size(); i++) {
         if (X_bool[i]) {
             int w = i / 64;
@@ -439,24 +422,36 @@ static vector<uint64_t> pack_bits_to_words(const vector<uint8_t>& X_bool,
     return X_words;
 }
 
-static vector<float> clause_outputs_from_words(const vector<uint64_t>& Xw,
-                                                 const Model& m) {
+// Evaluate each clause using pos/neg masks to check if it fires
+// Clause output is 1 if (X includes all pos bits) AND (X includes none of neg bits).
+static vector<float> clause_outputs_from_words(const vector<uint64_t>& Xw, const Model& m) {
+    
+    //creates amount of clauses initialized to 0
     vector<float> clauses(m.n_clauses, 0.0f);
 
+    //Loop over each clause, assume its true and disprove it
     for (int clause = 0; clause < m.n_clauses; clause++) {
         bool ok = true;
+
+        // Grab this clauses masks
         const uint64_t* pos = &m.pos_mask[(size_t)clause * (size_t)m.n_words];
         const uint64_t* neg = &m.neg_mask[(size_t)clause * (size_t)m.n_words];
 
+        // Loop though word by word
         for (int word = 0; word < m.n_words; word++) {
+            // Must contain all positive literals
             if ((Xw[word] & pos[word]) != pos[word])   { ok = false; break; }
+            // Must contain none of the negative literals
             if ((Xw[word] & neg[word]) != 0ULL)        { ok = false; break; }
         }
+
+        // If it passes all checks = 1, else 0
         clauses[clause] = ok ? 1.0f : 0.0f;
     }
     return clauses;
 }
 
+// Predict glucose, start with the intercept as a baseline, then end up with the prediciton
 static float ridge_predict(const vector<float>& clauses, const Model& model) {
     double prediction = (double)model.head_intercept;
     for (int c = 0; c < model.n_clauses; c++)

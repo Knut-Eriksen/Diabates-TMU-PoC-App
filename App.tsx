@@ -13,23 +13,7 @@ import {
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
 
-const MODEL_EXPORT_DIR = `${RNFS.DocumentDirectoryPath}/mobile_export`;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Raw timeline — mirrors the Python Cell 4a timeline exactly.
-//
-//  Column order for addReading() (11 fields, no header):
-//    date, glucose_level, missing_bg, meal, exercise,
-//    basis_heart_rate, basis_gsr, basis_steps, basis_sleep, bolus, basal
-//
-//  Notes:
-//    missing_bg = 0  (always — we have a reading)
-//    basis_gsr  = 0  (Basis band GSR — not used in this dataset)
-//    basis_sleep= 0  (sleep score — 0 if not tracked)
-//    basal      = units per 5-min interval (0.0833 ≈ 1 u/hr)
-//
-//  Base time: 2024-01-01 08:00:00 UTC  (matches Python Cell 4a base_time)
-// ─────────────────────────────────────────────────────────────────────────────
+// hardcoded fake stream of glucose readings
 const TIMELINE: Array<{
   datetime: string;
   glucose: number;
@@ -99,7 +83,7 @@ const TIMELINE: Array<{
     steps: 0,
     bolus: 0.0,
     basal: 0.0833,
-  }, // ← first prediction
+  },
   {
     datetime: '2024-01-01 08:30:00',
     glucose: 136.0,
@@ -139,7 +123,7 @@ const TIMELINE: Array<{
     steps: 0,
     bolus: 2.0,
     basal: 0.0833,
-  }, // ← meal + bolus
+  },
   {
     datetime: '2024-01-01 08:50:00',
     glucose: 133.0,
@@ -192,11 +176,10 @@ const TIMELINE: Array<{
   },
 ];
 
-// Build the 11-field CSV line C++ expects from a timeline entry
+// Converts the timeline object into the exact 11 field raw CSV string C++ expects
 function buildCsvLine(entry: (typeof TIMELINE)[0]): string {
   const { datetime, glucose, meal, exercise, heart_rate, steps, bolus, basal } =
     entry;
-  // missing_bg=0, basis_gsr=0, basis_sleep=0
   return `${datetime},${glucose},0.0,${meal},${exercise},${heart_rate},0.0,${steps},0.0,${bolus},${basal}`;
 }
 
@@ -212,12 +195,14 @@ export default function App() {
 
   const scrollRef = useRef<ScrollView>(null);
 
+  // Adds a new log entry and scrolls to the bottom
   function addLog(text: string, kind: LogEntry['kind'] = 'info') {
     setLog(prev => [...prev, { text, kind }]);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }
 
-  // ── Copy model files from bundle → Documents, then load ─────────────────
+  // runs once when the app starts
+  // copies model files then load the model nativly
   useEffect(() => {
     async function setup() {
       const destDir = `${RNFS.DocumentDirectoryPath}/mobile_export`;
@@ -264,26 +249,30 @@ export default function App() {
     };
   }, []);
 
-  // ── Run the full Python Cell 4a timeline ────────────────────────────────
+  // Replays the timeline through the native model one reading at a time
+  // Logs each prediction and saves the last valid result
   function handleRunTimeline() {
     if (!modelLoaded) {
       addLog('Model not loaded.', 'warn');
       return;
     }
 
+    // Reset the timeline
     NativeSampleModule.reset();
     setReadingCount(0);
     setPrediction(null);
-    addLog('── Running Python Cell 4a timeline ──', 'info');
+    addLog('── Running Python timeline ──', 'info');
 
     let count = 0;
     let lastPrediction: number | null = null;
 
+    // Loops through each item in TIMELINE, convert into csv, sends the csv into native module with addReading
     for (const entry of TIMELINE) {
       const line = buildCsvLine(entry);
       NativeSampleModule.addReading(line);
       count++;
 
+      // Predicts using the latest added line
       const result = NativeSampleModule.predict();
       const predStr = isNaN(result)
         ? '(not ready)'
@@ -300,7 +289,7 @@ export default function App() {
     if (lastPrediction !== null) setPrediction(lastPrediction);
   }
 
-  // ── Send a single custom line ────────────────────────────────────────────
+  // Sends the line in the custom raw line. ONLY FOR DEBUG
   function handleAddReading() {
     if (!modelLoaded) {
       addLog('Model not loaded.', 'warn');
@@ -522,7 +511,7 @@ const styles = StyleSheet.create({
   btnPrimary: { backgroundColor: '#1a237e' },
   btnSecondary: { backgroundColor: '#e0e0e0' },
   btnDisabled: { backgroundColor: '#9fa8da' },
-  btnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  btnText: { color: '#fff', fontWeight: '600', fontSize: 14, textAlign: "center" },
 
   logLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
   logBox: {
