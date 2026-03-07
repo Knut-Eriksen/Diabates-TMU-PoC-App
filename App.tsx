@@ -12,169 +12,7 @@ import {
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
-
-// hardcoded fake stream of glucose readings
-const TIMELINE: Array<{
-  datetime: string;
-  glucose: number;
-  meal: number;
-  exercise: number;
-  heart_rate: number;
-  steps: number;
-  bolus: number;
-  basal: number;
-}> = [
-  {
-    datetime: '2024-01-01 08:00:00',
-    glucose: 140.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 72.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:05:00',
-    glucose: 142.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 73.0,
-    steps: 50,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:10:00',
-    glucose: 143.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 74.0,
-    steps: 80,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:15:00',
-    glucose: 141.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 73.0,
-    steps: 60,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:20:00',
-    glucose: 139.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 72.0,
-    steps: 40,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:25:00',
-    glucose: 138.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 71.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:30:00',
-    glucose: 136.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 70.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:35:00',
-    glucose: 134.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 70.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:40:00',
-    glucose: 132.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 69.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:45:00',
-    glucose: 130.0,
-    meal: 20.0,
-    exercise: 0.0,
-    heart_rate: 70.0,
-    steps: 0,
-    bolus: 2.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:50:00',
-    glucose: 133.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 72.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 08:55:00',
-    glucose: 138.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 74.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 09:00:00',
-    glucose: 145.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 75.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 09:05:00',
-    glucose: 152.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 76.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-  {
-    datetime: '2024-01-01 09:10:00',
-    glucose: 158.0,
-    meal: 0.0,
-    exercise: 0.0,
-    heart_rate: 77.0,
-    steps: 0,
-    bolus: 0.0,
-    basal: 0.0833,
-  },
-];
+import { TIMELINE } from "./timeline_1000_hardcoded"
 
 // Converts the timeline object into the exact 11 field raw CSV string C++ expects
 function buildCsvLine(entry: (typeof TIMELINE)[0]): string {
@@ -257,36 +95,57 @@ export default function App() {
       return;
     }
 
-    // Reset the timeline
-    NativeSampleModule.reset();
-    setReadingCount(0);
-    setPrediction(null);
-    addLog('── Running Python timeline ──', 'info');
+    try {
+      const tButtonStart = performance.now();
 
-    let count = 0;
-    let lastPrediction: number | null = null;
+      // Reset the timeline
+      NativeSampleModule.reset();
+      setReadingCount(0);
+      setPrediction(null);
+      addLog('── Running Python timeline ──', 'info');
 
-    // Loops through each item in TIMELINE, convert into csv, sends the csv into native module with addReading
-    for (const entry of TIMELINE) {
-      const line = buildCsvLine(entry);
-      NativeSampleModule.addReading(line);
-      count++;
+      let count = 0;
+      let lastPrediction: number | null = null;
 
-      // Predicts using the latest added line
-      const result = NativeSampleModule.predict();
-      const predStr = isNaN(result)
-        ? '(not ready)'
-        : `${result.toFixed(1)} mg/dL`;
+      let totalPredictMs = 0;
+
+      // Loops through each item in TIMELINE, convert into csv, sends the csv into native module with addReading
+      for (const entry of TIMELINE) {
+        const line = buildCsvLine(entry);
+        NativeSampleModule.addReading(line);
+        count++;
+
+        const tPredictStart = performance.now();
+        const result = NativeSampleModule.predict();
+        const predictMs = performance.now() - tPredictStart;
+
+        totalPredictMs += predictMs;
+
+        const predStr = isNaN(result)
+          ? '(not ready)'
+          : `${result.toFixed(1)} mg/dL`;
+        addLog(
+          `${entry.datetime}  glucose=${entry.glucose}  → ${predStr}`,
+          isNaN(result) ? 'warn' : 'ok',
+        );
+
+        if (!isNaN(result)) lastPrediction = result;
+      }
+
+      setReadingCount(count);
+
+      const totalMs = performance.now() - tButtonStart;
+
+      if (lastPrediction !== null) setPrediction(lastPrediction);
       addLog(
-        `${entry.datetime}  glucose=${entry.glucose}  → ${predStr}`,
-        isNaN(result) ? 'warn' : 'ok',
+        `mg/dL (predict=${totalPredictMs.toFixed(2)}ms total=${totalMs.toFixed(
+          2,
+        )}ms)`,
+        'ok',
       );
-
-      if (!isNaN(result)) lastPrediction = result;
+    } catch (e: any) {
+      addLog(`Error: ${e?.message ?? e}`, 'err');
     }
-
-    setReadingCount(count);
-    if (lastPrediction !== null) setPrediction(lastPrediction);
   }
 
   // Sends the line in the custom raw line. ONLY FOR DEBUG
