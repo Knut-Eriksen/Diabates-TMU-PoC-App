@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
-import { TIMELINE } from "./timeline_1000_hardcoded"
+import { TIMELINE } from './timeline_1000_hardcoded';
 
 // Converts the timeline object into the exact 11 field raw CSV string C++ expects
 function buildCsvLine(entry: (typeof TIMELINE)[0]): string {
@@ -22,6 +22,32 @@ function buildCsvLine(entry: (typeof TIMELINE)[0]): string {
 }
 
 type LogEntry = { text: string; kind: 'info' | 'ok' | 'warn' | 'err' };
+const LOG_CAP = 100;
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return NaN;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
+  );
+  return sorted[idx];
+}
+
+function formatPerfSummary(label: string, latenciesMs: number[]): string {
+  if (latenciesMs.length === 0) {
+    return `${label}: no requests`;
+  }
+
+  const totalMs = latenciesMs.reduce((sum, x) => sum + x, 0);
+  const avgMs = totalMs / latenciesMs.length;
+  const p50 = percentile(latenciesMs, 50);
+  const p95 = percentile(latenciesMs, 95);
+  const p99 = percentile(latenciesMs, 99);
+  const rps = totalMs > 0 ? (latenciesMs.length * 1000) / totalMs : 0;
+
+  return `${label}: avg=${avgMs.toFixed(2)}ms p50=${p50.toFixed(2)}ms p95=${p95.toFixed(2)}ms p99=${p99.toFixed(2)}ms total_request_time=${totalMs.toFixed(2)}ms rps=${rps.toFixed(2)}`;
+}
 
 export default function App() {
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -30,12 +56,13 @@ export default function App() {
   const [prediction, setPrediction] = useState<number | null>(null);
   const [readingCount, setReadingCount] = useState(0);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const requestTimesRef = useRef<number[]>([]);
 
   const scrollRef = useRef<ScrollView>(null);
 
   // Adds a new log entry and scrolls to the bottom
   function addLog(text: string, kind: LogEntry['kind'] = 'info') {
-    setLog(prev => [...prev, { text, kind }]);
+    setLog(prev => [...prev, { text, kind }].slice(-LOG_CAP));
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }
 
@@ -96,21 +123,21 @@ export default function App() {
     }
 
     try {
-      const tButtonStart = performance.now();
-
       // Reset the timeline
       NativeSampleModule.reset();
       setReadingCount(0);
       setPrediction(null);
-      addLog('── Running Python timeline ──', 'info');
+      addLog('── Running 1000 timeline ──', 'info');
 
       let count = 0;
       let lastPrediction: number | null = null;
 
       let totalPredictMs = 0;
+      const runRequestTimesMs: number[] = [];
 
       // Loops through each item in TIMELINE, convert into csv, sends the csv into native module with addReading
       for (const entry of TIMELINE) {
+        const tRequestStart = performance.now();
         const line = buildCsvLine(entry);
         NativeSampleModule.addReading(line);
         count++;
@@ -118,14 +145,17 @@ export default function App() {
         const tPredictStart = performance.now();
         const result = NativeSampleModule.predict();
         const predictMs = performance.now() - tPredictStart;
+        const requestMs = performance.now() - tRequestStart;
 
         totalPredictMs += predictMs;
+        runRequestTimesMs.push(requestMs);
+        requestTimesRef.current.push(requestMs);
 
         const predStr = isNaN(result)
           ? '(not ready)'
           : `${result.toFixed(1)} mg/dL`;
         addLog(
-          `${entry.datetime}  glucose=${entry.glucose}  → ${predStr}`,
+          `${entry.datetime} glucose=${entry.glucose} → ${predStr} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
           isNaN(result) ? 'warn' : 'ok',
         );
 
@@ -134,14 +164,14 @@ export default function App() {
 
       setReadingCount(count);
 
-      const totalMs = performance.now() - tButtonStart;
-
       if (lastPrediction !== null) setPrediction(lastPrediction);
+      addLog(formatPerfSummary('1000 requests metrics', runRequestTimesMs), 'info');
       addLog(
-        `mg/dL (predict=${totalPredictMs.toFixed(2)}ms total=${totalMs.toFixed(
-          2,
-        )}ms)`,
-        'ok',
+        formatPerfSummary(
+          'Session request metrics',
+          requestTimesRef.current,
+        ),
+        'info',
       );
     } catch (e: any) {
       addLog(`Error: ${e?.message ?? e}`, 'err');
@@ -181,20 +211,25 @@ export default function App() {
       const tPredictStart = performance.now();
       const result = NativeSampleModule.predict();
       const predictMs = performance.now() - tPredictStart;
-      const totalMs = performance.now() - tButtonStart;
+      const requestMs = performance.now() - tButtonStart;
+      requestTimesRef.current.push(requestMs);
       if (isNaN(result)) {
         setPrediction(null);
         addLog(
-          `Reading #${count} added — not ready yet. predict=${predictMs.toFixed(2)}ms total=${totalMs.toFixed(2)}ms`,
+          `Reading #${count} added — not ready yet. request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms`,
           'warn',
         );
       } else {
         setPrediction(result);
         addLog(
-          `Reading #${count} → ${result.toFixed(1)} mg/dL (predict=${predictMs.toFixed(2)}ms total=${totalMs.toFixed(2)}ms)`,
+          `Reading #${count} → ${result.toFixed(1)} mg/dL (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
           'ok',
         );
       }
+      addLog(
+        formatPerfSummary('Session request metrics', requestTimesRef.current),
+        'info',
+      );
     } catch (e: any) {
       addLog(`Error: ${e?.message ?? e}`, 'err');
     }
@@ -202,6 +237,7 @@ export default function App() {
 
   function handleReset() {
     NativeSampleModule.reset();
+    requestTimesRef.current = [];
     setReadingCount(0);
     setPrediction(null);
     addLog('Session reset.', 'info');
@@ -262,7 +298,7 @@ export default function App() {
             onPress={handleRunTimeline}
             disabled={!modelLoaded}
           >
-            <Text style={styles.btnText}>Run Python Timeline</Text>
+            <Text style={styles.btnText}>Run 1000 Timeline</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
