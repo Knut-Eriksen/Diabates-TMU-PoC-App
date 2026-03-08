@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,16 +13,61 @@ import {
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
-import { TIMELINE } from './timeline_1000_hardcoded';
+const VAL_CSV_ASSET = require('./one_patient_val.csv');
 
-// Converts the timeline object into the exact 11 field raw CSV string C++ expects
-function buildCsvLine(entry: (typeof TIMELINE)[0]): string {
-  const { datetime, glucose, meal, exercise, heart_rate, steps, bolus, basal } =
-    entry;
-  return `${datetime},${glucose},0.0,${meal},${exercise},${heart_rate},0.0,${steps},0.0,${bolus},${basal}`;
+async function loadValCsvLines(): Promise<string[]> {
+  const assetSource = Image.resolveAssetSource(VAL_CSV_ASSET);
+  const assetUri = assetSource?.uri;
+
+  if (!assetUri) {
+    throw new Error('Could not resolve bundled one_patient_val.csv asset.');
+  }
+
+  let csvText = '';
+
+  try {
+    const response = await fetch(assetUri);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    csvText = await response.text();
+  } catch {
+    // Fallback for native bundle path if fetch(assetUri) is unavailable.
+    const bundlePath = `${RNFS.MainBundlePath}/one_patient_val.csv`;
+    csvText = await RNFS.readFile(bundlePath, 'utf8');
+  }
+
+  const lines = csvText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    throw new Error('one_patient_val.csv is empty.');
+  }
+
+  const firstLine = lines[0].toLowerCase();
+  const dataLines =
+    firstLine.startsWith('date,') || firstLine.startsWith('datetime,')
+      ? lines.slice(1)
+      : lines;
+
+  const validLines = dataLines.filter(line => line.split(',').length === 11);
+  if (validLines.length === 0) {
+    throw new Error('one_patient_val.csv has no valid 11-field data lines.');
+  }
+
+  return validLines;
 }
 
 type LogEntry = { text: string; kind: 'info' | 'ok' | 'warn' | 'err' };
+type PredictionRow = {
+  datetime: string;
+  glucose: string;
+  prediction: string;
+  requestMs: string;
+  predictMs: string;
+};
 const LOG_CAP = 100;
 
 function percentile(values: number[], p: number): number {
@@ -52,10 +98,11 @@ function formatPerfSummary(label: string, latenciesMs: number[]): string {
 export default function App() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [csvLine, setCsvLine] = useState(buildCsvLine(TIMELINE[0]));
+  const [csvLine, setCsvLine] = useState('');
   const [prediction, setPrediction] = useState<number | null>(null);
   const [readingCount, setReadingCount] = useState(0);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const predictionsRef = useRef<PredictionRow[]>([]);
   const requestTimesRef = useRef<number[]>([]);
 
   const scrollRef = useRef<ScrollView>(null);
@@ -116,29 +163,29 @@ export default function App() {
 
   // Replays the timeline through the native model one reading at a time
   // Logs each prediction and saves the last valid result
-  function handleRunTimeline() {
+  async function handleRunTimeline() {
     if (!modelLoaded) {
       addLog('Model not loaded.', 'warn');
       return;
     }
 
     try {
+      const timelineLines = await loadValCsvLines();
+
       // Reset the timeline
       NativeSampleModule.reset();
       setReadingCount(0);
       setPrediction(null);
-      addLog('── Running 1000 timeline ──', 'info');
+      predictionsRef.current = [];
+      addLog(`── Running one_patient_val.csv timeline (${timelineLines.length} rows) ──`, 'info');
 
       let count = 0;
       let lastPrediction: number | null = null;
 
-      let totalPredictMs = 0;
       const runRequestTimesMs: number[] = [];
 
-      // Loops through each item in TIMELINE, convert into csv, sends the csv into native module with addReading
-      for (const entry of TIMELINE) {
+      for (const line of timelineLines) {
         const tRequestStart = performance.now();
-        const line = buildCsvLine(entry);
         NativeSampleModule.addReading(line);
         count++;
 
@@ -147,25 +194,36 @@ export default function App() {
         const predictMs = performance.now() - tPredictStart;
         const requestMs = performance.now() - tRequestStart;
 
-        totalPredictMs += predictMs;
         runRequestTimesMs.push(requestMs);
         requestTimesRef.current.push(requestMs);
 
+        const [datetime, glucose] = line.split(',');
         const predStr = isNaN(result)
           ? '(not ready)'
-          : `${result.toFixed(1)} mg/dL`;
+          : `${result.toFixed(4)} mg/dL`;
         addLog(
-          `${entry.datetime} glucose=${entry.glucose} → ${predStr} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
+          `${datetime} glucose=${glucose} → ${predStr} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
           isNaN(result) ? 'warn' : 'ok',
         );
+        predictionsRef.current.push({
+          datetime,
+          glucose,
+          prediction: isNaN(result) ? '' : result.toFixed(4),
+          requestMs: requestMs.toFixed(2),
+          predictMs: predictMs.toFixed(2),
+        });
 
         if (!isNaN(result)) lastPrediction = result;
       }
 
       setReadingCount(count);
+      setCsvLine(timelineLines[0]);
 
       if (lastPrediction !== null) setPrediction(lastPrediction);
-      addLog(formatPerfSummary('1000 requests metrics', runRequestTimesMs), 'info');
+      addLog(
+        formatPerfSummary('one_patient_val.csv run metrics', runRequestTimesMs),
+        'info',
+      );
       addLog(
         formatPerfSummary(
           'Session request metrics',
@@ -222,7 +280,7 @@ export default function App() {
       } else {
         setPrediction(result);
         addLog(
-          `Reading #${count} → ${result.toFixed(1)} mg/dL (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
+          `Reading #${count} → ${result.toFixed(4)} mg/dL (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
           'ok',
         );
       }
@@ -238,9 +296,40 @@ export default function App() {
   function handleReset() {
     NativeSampleModule.reset();
     requestTimesRef.current = [];
+    predictionsRef.current = [];
     setReadingCount(0);
     setPrediction(null);
     addLog('Session reset.', 'info');
+  }
+
+  async function handleSavePredictionsCsv() {
+    if (predictionsRef.current.length === 0) {
+      addLog('No predictions to save yet.', 'warn');
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const fileName = `predictions_${now.getFullYear()}${pad(
+        now.getMonth() + 1,
+      )}${pad(now.getDate())}_${pad(now.getHours())}${pad(
+        now.getMinutes(),
+      )}${pad(now.getSeconds())}.csv`;
+      const destPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
+
+      const header = 'datetime,glucose,prediction,request_ms,predict_ms';
+      const rows = predictionsRef.current.map(
+        row =>
+          `${row.datetime},${row.glucose},${row.prediction},${row.requestMs},${row.predictMs}`,
+      );
+      const csv = `${header}\n${rows.join('\n')}\n`;
+
+      await RNFS.writeFile(destPath, csv, 'utf8');
+      addLog(`Saved predictions CSV: ${destPath}`, 'ok');
+    } catch (e: any) {
+      addLog(`Save failed: ${e?.message ?? e}`, 'err');
+    }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -265,7 +354,7 @@ export default function App() {
         <View style={styles.predBox}>
           <Text style={styles.predLabel}>Latest prediction</Text>
           <Text style={styles.predValue}>
-            {prediction !== null ? `${prediction.toFixed(1)}` : '—'}
+            {prediction !== null ? `${prediction.toFixed(4)}` : '—'}
           </Text>
           {prediction !== null && <Text style={styles.predUnit}>mg/dL</Text>}
           <Text style={styles.predSub}>
@@ -298,7 +387,7 @@ export default function App() {
             onPress={handleRunTimeline}
             disabled={!modelLoaded}
           >
-            <Text style={styles.btnText}>Run 1000 Timeline</Text>
+            <Text style={styles.btnText}>Run val.csv Timeline</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -320,6 +409,15 @@ export default function App() {
             onPress={handleReset}
           >
             <Text style={[styles.btnText, { color: '#333' }]}>Reset</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.btn, styles.btnSecondary]}
+            onPress={handleSavePredictionsCsv}
+          >
+            <Text style={[styles.btnText, { color: '#333' }]}>
+              Save Predictions CSV
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -416,7 +514,7 @@ const styles = StyleSheet.create({
   btnPrimary: { backgroundColor: '#1a237e' },
   btnSecondary: { backgroundColor: '#e0e0e0' },
   btnDisabled: { backgroundColor: '#9fa8da' },
-  btnText: { color: '#fff', fontWeight: '600', fontSize: 14, textAlign: "center" },
+  btnText: { color: '#fff', fontWeight: '600', fontSize: 14, textAlign: 'center' },
 
   logLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
   logBox: {
