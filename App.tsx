@@ -10,6 +10,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Platform,
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
@@ -130,10 +131,15 @@ export default function App() {
       try {
         await RNFS.mkdir(destDir);
         for (const file of files) {
-          const src = `${RNFS.MainBundlePath}/${file}`;
+          const isIOS = Platform.OS === 'ios';
+          const src = isIOS ? `${RNFS.MainBundlePath}/${file}` : file;
           const dest = `${destDir}/${file}`;
           if (await RNFS.exists(dest)) await RNFS.unlink(dest);
-          await RNFS.copyFile(src, dest);
+            if (isIOS) {
+            await RNFS.copyFile(src, dest);
+          } else {
+            await RNFS.copyFileAssets(src, dest);
+          }
         }
         addLog('Model files copied.', 'info');
       } catch (e: any) {

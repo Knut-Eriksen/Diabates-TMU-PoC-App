@@ -76,7 +76,7 @@ static float read_single_float(const string& path) {
 // ───────────────────────────────────────── Time ─────────────────────────────────────────
 
 // Convert datetime into unix seconds
-static int64_t parse_timestamp_to_unix(const std::string& s) {
+int64_t parse_timestamp_to_unix(const std::string& s) {
     std::tm tm{};
     std::istringstream ss(s);
 

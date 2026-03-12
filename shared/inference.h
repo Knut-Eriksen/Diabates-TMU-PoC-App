@@ -8,7 +8,7 @@
 
 // ───────────────────────────────────────── Time ─────────────────────────────────────────
 
-static int64_t parse_timestamp_to_unix(const std::string& s);
+int64_t parse_timestamp_to_unix(const std::string& s);
 
 // ───────────────────────────────────────── CSV parsing ─────────────────────────────────────────
 
