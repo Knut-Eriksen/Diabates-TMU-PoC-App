@@ -59,6 +59,12 @@ react {
  */
 def enableProguardInReleaseBuilds = false
 
+// Sets the folder path to where export files are
+def mobileExportSourceDir = file("../../mobile_export")
+
+// Sets foledr path to assets folder inside android
+def mobileExportAssetsDir = file("$projectDir/src/main/assets")
+
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
@@ -110,6 +116,17 @@ android {
             path "src/main/jni/CMakeLists.txt"
         }
     }
+}
+
+// Mirrors the folder and syncs ito the android build
+tasks.register("syncMobileExportAssets", Sync) {
+    from(mobileExportSourceDir)
+    into(mobileExportAssetsDir)
+}
+tasks.matching { task ->
+    task.name in ["preBuild", "generateDebugAssets", "generateReleaseAssets"]
+}.configureEach {
+    dependsOn("syncMobileExportAssets")
 }
 
 dependencies {

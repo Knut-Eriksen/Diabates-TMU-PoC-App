@@ -117,8 +117,8 @@
 				725B73792F5AF0E800911C34 /* y_tm.bin */,
 			);
 			name = mobile_export;
-			path = "/Users/Knut/Bachelor-2026/Code/Diabates-TMU-PoC/Py-TMU/trial_2_30min_nolag_nozeroremoval_PoC/mobile_export";
-			sourceTree = "<absolute>";
+			path = ../mobile_export;
+			sourceTree = SOURCE_ROOT;
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
 			isa = PBXGroup;
