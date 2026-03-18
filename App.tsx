@@ -338,6 +338,125 @@ export default function App() {
     }
   }
 
+  async function handleRunServerBenchmark() {
+    if (!modelLoaded) {
+      addLog('Model not loaded.', 'warn');
+      return;
+    }
+  
+    const baseUrl = 'http://192.168.68.131:8000'; // or whatever URL you want
+    const headers = { 'Content-Type': 'application/json' };
+  
+    addLog('── Running server benchmark from one_patient_val.csv ──', 'info');
+  
+    let success = 0;
+    let fail = 0;
+    const latencies: number[] = [];
+  
+    // Optional: reset server
+    try {
+      await fetch(`${baseUrl}/reset`, { method: 'POST', headers, body: '{}' });
+    } catch {
+      /* ignore */
+    }
+  
+    const lines = await loadValCsvLines();
+  
+    for (const line of lines) {
+      const parts = line.split(',');
+      if (parts.length !== 11) continue;
+  
+      const [
+        datetime,
+        glucose,
+        meal,
+        exercise,
+        heartRate,
+        steps,
+        , // sleep or unused
+        bolus,
+        basal,
+        , // extra
+        , // extra
+      ] = parts;
+  
+      const payload = {
+        glucose: parseFloat(glucose),
+        meal: parseFloat(meal || '0'),
+        bolus: parseFloat(bolus || '0'),
+        basal: parseFloat(basal || '0'),
+        exercise: parseFloat(exercise || '0'),
+        basis_heart_rate: parseFloat(heartRate || '0'),
+        basis_steps: parseFloat(steps || '0'),
+        basis_sleep: 0.0,
+        timestamp: datetime,
+      };
+  
+      try {
+        const t0 = performance.now();
+        const res = await fetch(`${baseUrl}/predict`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+        const t1 = performance.now();
+        const latencyMs = t1 - t0;
+  
+        latencies.push(latencyMs);
+  
+        const data = await res.json();
+        const status = data.message ?? '';
+        const pred = data.prediction as number | null;
+        const predictMs = data.predict_ms as number | null;
+  
+        success += 1;
+  
+        const extras: string[] = [];
+        if (payload.meal > 0) extras.push(`meal=${payload.meal}g`);
+        if (payload.bolus > 0) extras.push(`bolus=${payload.bolus}u`);
+        const extrasStr = extras.length ? ` [${extras.join(', ')}]` : '';
+  
+        const predStr =
+          pred != null && !isNaN(pred) ? `${pred.toFixed(4)} mg/dL` : '(not ready)';
+  
+        addLog(
+          `${datetime} glucose=${payload.glucose}${extrasStr} → ${predStr} (status="${status}" request=${latencyMs.toFixed(
+            2,
+          )}ms predict=${predictMs ?? '—'}ms)`,
+          pred != null && !isNaN(pred) ? 'ok' : 'warn',
+        );
+      } catch (e: any) {
+        fail += 1;
+        addLog(
+          `${datetime} glucose=${payload.glucose} → REQUEST FAILED (${e?.message ?? e})`,
+          'err',
+        );
+      }
+    }
+  
+    if (latencies.length) {
+      const sorted = [...latencies].sort((a, b) => a - b);
+      const total = sorted.reduce((s, x) => s + x, 0);
+      const avg = total / sorted.length;
+      const p = (q: number) =>
+        sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  
+      addLog(
+        `Server benchmark: success=${success} fail=${fail} avg=${avg.toFixed(
+          2,
+        )}ms p50=${p(0.5).toFixed(2)}ms p95=${p(0.95).toFixed(
+          2,
+        )}ms p99=${p(0.99).toFixed(2)}ms`,
+        'info',
+      );
+    } else {
+      addLog(
+        `Server benchmark: no successful requests (success=${success} fail=${fail})`,
+        'err',
+      );
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
@@ -383,6 +502,22 @@ export default function App() {
         />
 
         {/* Buttons */}
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[
+              styles.btn,
+              styles.btnSecondary,
+              !modelLoaded && styles.btnDisabled,
+            ]}
+            onPress={handleRunServerBenchmark}
+            disabled={!modelLoaded}
+          >
+            <Text style={[styles.btnText, { color: '#333' }]}>
+              Run Server Benchmark
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.buttonRow}>
           <TouchableOpacity
             style={[
