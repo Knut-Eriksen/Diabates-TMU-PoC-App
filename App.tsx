@@ -435,19 +435,20 @@ export default function App() {
     }
   
     if (latencies.length) {
-      const sorted = [...latencies].sort((a, b) => a - b);
-      const total = sorted.reduce((s, x) => s + x, 0);
-      const avg = total / sorted.length;
-      const p = (q: number) =>
-        sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
-  
+      // Keep the same output format as the mobile inference path
+      // (avg/p50/p95/p99 + total_request_time + rps).
       addLog(
-        `Server benchmark: success=${success} fail=${fail} avg=${avg.toFixed(
-          2,
-        )}ms p50=${p(0.5).toFixed(2)}ms p95=${p(0.95).toFixed(
-          2,
-        )}ms p99=${p(0.99).toFixed(2)}ms`,
+        formatPerfSummary('one_patient_val.csv run metrics', latencies),
         'info',
+      );
+      addLog(
+        formatPerfSummary('Session request metrics', latencies),
+        'info',
+      );
+
+      addLog(
+        `Reliability (server): success=${success} fail=${fail} failure_rate=${(((fail / (success + fail)) * 100) || 0).toFixed(2)}%`,
+        fail > 0 ? 'warn' : 'ok',
       );
     } else {
       addLog(
