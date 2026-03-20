@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -14,14 +15,32 @@ import {
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
-const VAL_CSV_ASSET = require('./one_patient_val.csv');
+const ONE_PATIENT_VAL_ASSET = require('./one_patient_val.csv');
 
-async function loadValCsvLines(): Promise<string[]> {
-  const assetSource = Image.resolveAssetSource(VAL_CSV_ASSET);
+const PATIENT_VAL_ASSETS: Record<number, any> = {
+  1: require('./patient_1_val.csv'),
+  2: require('./patient_2_val.csv'),
+  3: require('./patient_3_val.csv'),
+  4: require('./patient_4_val.csv'),
+  5: require('./patient_5_val.csv'),
+  6: require('./patient_6_val.csv'),
+  7: require('./patient_7_val.csv'),
+  8: require('./patient_8_val.csv'),
+  9: require('./patient_9_val.csv'),
+  10: require('./patient_10_val.csv'),
+  11: require('./patient_11_val.csv'),
+  12: require('./patient_12_val.csv'),
+};
+
+async function loadValCsvLines(
+  valAsset: any,
+  valFileName: string,
+): Promise<string[]> {
+  const assetSource = Image.resolveAssetSource(valAsset);
   const assetUri = assetSource?.uri;
 
   if (!assetUri) {
-    throw new Error('Could not resolve bundled one_patient_val.csv asset.');
+    throw new Error(`Could not resolve bundled ${valFileName} asset.`);
   }
 
   let csvText = '';
@@ -33,9 +52,13 @@ async function loadValCsvLines(): Promise<string[]> {
     }
     csvText = await response.text();
   } catch {
-    // Fallback for native bundle path if fetch(assetUri) is unavailable.
-    const bundlePath = `${RNFS.MainBundlePath}/one_patient_val.csv`;
-    csvText = await RNFS.readFile(bundlePath, 'utf8');
+    // Fallback: Android assets vs iOS bundle.
+    if (Platform.OS === 'android') {
+      csvText = await RNFS.readFileAssets(valFileName, 'utf8');
+    } else {
+      const bundlePath = `${RNFS.MainBundlePath}/${valFileName}`;
+      csvText = await RNFS.readFile(bundlePath, 'utf8');
+    }
   }
 
   const lines = csvText
@@ -44,7 +67,7 @@ async function loadValCsvLines(): Promise<string[]> {
     .filter(Boolean);
 
   if (lines.length === 0) {
-    throw new Error('one_patient_val.csv is empty.');
+    throw new Error(`${valFileName} is empty.`);
   }
 
   const firstLine = lines[0].toLowerCase();
@@ -55,7 +78,7 @@ async function loadValCsvLines(): Promise<string[]> {
 
   const validLines = dataLines.filter(line => line.split(',').length === 11);
   if (validLines.length === 0) {
-    throw new Error('one_patient_val.csv has no valid 11-field data lines.');
+    throw new Error(`${valFileName} has no valid 11-field data lines.`);
   }
 
   return validLines;
@@ -105,8 +128,14 @@ export default function App() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const predictionsRef = useRef<PredictionRow[]>([]);
   const requestTimesRef = useRef<number[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<number>(1);
+  const [valPickerOpen, setValPickerOpen] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
+
+  const selectedValFileName = `patient_${selectedPatientId}_val.csv`;
+  const selectedValAsset =
+    PATIENT_VAL_ASSETS[selectedPatientId] ?? ONE_PATIENT_VAL_ASSET;
 
   // Adds a new log entry and scrolls to the bottom
   function addLog(text: string, kind: LogEntry['kind'] = 'info') {
@@ -176,14 +205,20 @@ export default function App() {
     }
 
     try {
-      const timelineLines = await loadValCsvLines();
+      const timelineLines = await loadValCsvLines(
+        selectedValAsset,
+        selectedValFileName,
+      );
 
       // Reset the timeline
       NativeSampleModule.reset();
       setReadingCount(0);
       setPrediction(null);
       predictionsRef.current = [];
-      addLog(`── Running one_patient_val.csv timeline (${timelineLines.length} rows) ──`, 'info');
+      addLog(
+        `── Running ${selectedValFileName} timeline (${timelineLines.length} rows) ──`,
+        'info',
+      );
 
       let count = 0;
       let lastPrediction: number | null = null;
@@ -227,7 +262,7 @@ export default function App() {
 
       if (lastPrediction !== null) setPrediction(lastPrediction);
       addLog(
-        formatPerfSummary('one_patient_val.csv run metrics', runRequestTimesMs),
+        formatPerfSummary(`${selectedValFileName} run metrics`, runRequestTimesMs),
         'info',
       );
       addLog(
@@ -347,7 +382,10 @@ export default function App() {
     const baseUrl = 'http://192.168.68.131:8000'; // or whatever URL you want
     const headers = { 'Content-Type': 'application/json' };
   
-    addLog('── Running server benchmark from one_patient_val.csv ──', 'info');
+    addLog(
+      `── Running server benchmark from ${selectedValFileName} ──`,
+      'info',
+    );
   
     let success = 0;
     let fail = 0;
@@ -360,11 +398,12 @@ export default function App() {
       /* ignore */
     }
   
-    const lines = await loadValCsvLines();
+    const lines = await loadValCsvLines(selectedValAsset, selectedValFileName);
   
     for (const line of lines) {
       const parts = line.split(',');
       if (parts.length !== 11) continue;
+
   
       const [
         datetime,
@@ -379,7 +418,6 @@ export default function App() {
         , // extra
         , // extra
       ] = parts;
-  
       const payload = {
         glucose: parseFloat(glucose),
         meal: parseFloat(meal || '0'),
@@ -388,7 +426,7 @@ export default function App() {
         exercise: parseFloat(exercise || '0'),
         basis_heart_rate: parseFloat(heartRate || '0'),
         basis_steps: parseFloat(steps || '0'),
-        basis_sleep: 0.0,
+        basis_sleep: parseFloat(sleep || '0'),
         timestamp: datetime,
       };
   
@@ -438,7 +476,7 @@ export default function App() {
       // Keep the same output format as the mobile inference path
       // (avg/p50/p95/p99 + total_request_time + rps).
       addLog(
-        formatPerfSummary('one_patient_val.csv run metrics', latencies),
+        formatPerfSummary(`${selectedValFileName} run metrics`, latencies),
         'info',
       );
       addLog(
@@ -502,6 +540,57 @@ export default function App() {
           placeholderTextColor="#888"
         />
 
+        {/* Val file selector */}
+        <TouchableOpacity
+          style={[styles.pill, styles.pillNeutral]}
+          onPress={() => setValPickerOpen(true)}
+        >
+          <Text style={styles.pillText}>Val file: {selectedValFileName}</Text>
+        </TouchableOpacity>
+
+        <Modal
+          transparent
+          visible={valPickerOpen}
+          animationType="fade"
+          onRequestClose={() => setValPickerOpen(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setValPickerOpen(false)}
+          />
+          <View style={styles.modalSheet}>
+            <ScrollView style={styles.modalList}>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map(id => {
+                const name = `patient_${id}_val.csv`;
+                const isSelected = id === selectedPatientId;
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    style={[
+                      styles.modalItem,
+                      isSelected && styles.modalItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedPatientId(id);
+                      setValPickerOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.modalItemText,
+                        isSelected && styles.modalItemTextSelected,
+                      ]}
+                    >
+                      {name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Modal>
+
         {/* Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
@@ -529,7 +618,7 @@ export default function App() {
             onPress={handleRunTimeline}
             disabled={!modelLoaded}
           >
-            <Text style={styles.btnText}>Run val.csv Timeline</Text>
+            <Text style={styles.btnText}>Run {selectedValFileName} Timeline</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -609,6 +698,7 @@ const styles = StyleSheet.create({
   pillOk: { backgroundColor: '#2e7d32' },
   pillWarn: { backgroundColor: '#b71c1c' },
   pillText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  pillNeutral: { backgroundColor: '#444' },
 
   predBox: {
     backgroundColor: '#fff',
@@ -631,6 +721,43 @@ const styles = StyleSheet.create({
   },
   predUnit: { fontSize: 18, color: '#5c6bc0', marginTop: -4, marginBottom: 4 },
   predSub: { fontSize: 12, color: '#aaa', marginTop: 6 },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  modalSheet: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    right: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  modalList: { maxHeight: 320 },
+  modalItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#f2f2f2',
+    marginBottom: 8,
+  },
+  modalItemSelected: {
+    backgroundColor: '#1a237e',
+  },
+  modalItemText: {
+    color: '#111',
+    fontWeight: '600',
+  },
+  modalItemTextSelected: {
+    color: '#fff',
+  },
 
   inputLabel: {
     fontSize: 13,
