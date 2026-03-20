@@ -18,18 +18,18 @@ import NativeSampleModule from './specs/NativeSampleModule';
 const ONE_PATIENT_VAL_ASSET = require('./one_patient_val.csv');
 
 const PATIENT_VAL_ASSETS: Record<number, any> = {
-  1: require('./patient_1_val.csv'),
-  2: require('./patient_2_val.csv'),
-  3: require('./patient_3_val.csv'),
-  4: require('./patient_4_val.csv'),
-  5: require('./patient_5_val.csv'),
-  6: require('./patient_6_val.csv'),
-  7: require('./patient_7_val.csv'),
-  8: require('./patient_8_val.csv'),
-  9: require('./patient_9_val.csv'),
-  10: require('./patient_10_val.csv'),
-  11: require('./patient_11_val.csv'),
-  12: require('./patient_12_val.csv'),
+  1: require('./patient_val/patient_1_val.csv'),
+  2: require('./patient_val/patient_2_val.csv'),
+  3: require('./patient_val/patient_3_val.csv'),
+  4: require('./patient_val/patient_4_val.csv'),
+  5: require('./patient_val/patient_5_val.csv'),
+  6: require('./patient_val/patient_6_val.csv'),
+  7: require('./patient_val/patient_7_val.csv'),
+  8: require('./patient_val/patient_8_val.csv'),
+  9: require('./patient_val/patient_9_val.csv'),
+  10: require('./patient_val/patient_10_val.csv'),
+  11: require('./patient_val/patient_11_val.csv'),
+  12: require('./patient_val/patient_12_val.csv'),
 };
 
 async function loadValCsvLines(
