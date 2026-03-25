@@ -77,3 +77,9 @@ yarn-error.log
 # Local debug/model artifacts
 Build SampleApp_*.txt
 *.o
+
+
+*.bin
+*.json
+*.csv
+mobile_export

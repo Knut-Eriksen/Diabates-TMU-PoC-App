@@ -65,14 +65,6 @@ static vector<T> read_binary_vec(const string& path) {
     return out;
 }
 
-// Loads a .bin file and checks if it contains exactly one float
-static float read_single_float(const string& path) {
-    auto v = read_binary_vec<float>(path);
-    if (v.size() != 1)
-        throw runtime_error("Expected exactly 1 float in: " + path);
-    return v[0];
-}
-
 // ───────────────────────────────────────── Time ─────────────────────────────────────────
 
 // Convert datetime into unix seconds
@@ -333,6 +325,9 @@ Model load_model_from_export_dir(const string& export_dir, const string& meta_pa
     model.n_bits_total = meta.at("n_bits_total").get<int>();
     model.n_clauses    = meta.at("n_clauses").get<int>();
     model.n_words      = meta.at("n_words").get<int>();
+    model.t_param      = meta.at("t_param").get<int>();
+    model.min_y        = meta.at("min_y").get<float>();
+    model.max_y        = meta.at("max_y").get<float>();
 
     // read from json into model by converting to an interger
     auto offsets = meta.at("threshold_offsets");
@@ -348,15 +343,13 @@ Model load_model_from_export_dir(const string& export_dir, const string& meta_pa
     const string thresholds_file         = meta.value("thresholds_file",         "thresholds.bin");
     const string pos_mask_file           = meta.value("pos_mask_file",           "pos_mask.bin");
     const string neg_mask_file           = meta.value("neg_mask_file",           "neg_mask.bin");
-    const string head_clause_weights_file = meta.value("head_clause_weights_file", "head_clause_weights.bin");
-    const string head_int_file           = meta.value("head_intercept_file",     "head_intercept.bin");
+    const string clause_weights_file     = meta.value("clause_weights_file",     "clause_weights.bin");
 
     // Load binary files (blobs) with the path as argument
     model.thresholds           = read_binary_vec<float>   (join_path(export_dir, thresholds_file));
     model.pos_mask             = read_binary_vec<uint64_t>(join_path(export_dir, pos_mask_file));
     model.neg_mask             = read_binary_vec<uint64_t>(join_path(export_dir, neg_mask_file));
-    model.head_clause_weights  = read_binary_vec<float>   (join_path(export_dir, head_clause_weights_file));
-    model.head_intercept       = read_single_float        (join_path(export_dir, head_int_file));
+    model.clause_weights       = read_binary_vec<float>(join_path(export_dir, clause_weights_file));
 
     // Validate sizes, if everything matches model now contains all rules, thresholds, and ridge head weights needed for inference
     int expected_thresholds = model.threshold_offsets.back();
@@ -370,8 +363,8 @@ Model load_model_from_export_dir(const string& export_dir, const string& meta_pa
         throw runtime_error("pos_mask.bin size mismatch");
     if (model.neg_mask.size() != expected_masks)
         throw runtime_error("neg_mask.bin size mismatch");
-    if ((int)model.head_clause_weights.size() != model.n_clauses)
-        throw runtime_error("head_clause_weights.bin size mismatch");
+    if ((int)model.clause_weights.size() != model.n_clauses)
+        throw runtime_error("clause_weights.bin size mismatch");
 
     return model;
 }
@@ -432,6 +425,7 @@ static vector<float> clause_outputs_from_words(const vector<uint64_t>& Xw, const
     //Loop over each clause, assume its true and disprove it
     for (int clause = 0; clause < m.n_clauses; clause++) {
         bool ok = true;
+        bool has_included_literal = false;
 
         // Grab this clauses masks
         const uint64_t* pos = &m.pos_mask[(size_t)clause * (size_t)m.n_words];
@@ -439,6 +433,10 @@ static vector<float> clause_outputs_from_words(const vector<uint64_t>& Xw, const
 
         // Loop though word by word
         for (int word = 0; word < m.n_words; word++) {
+            if (pos[word] != 0ULL || neg[word] != 0ULL) {
+                has_included_literal = true;
+            }
+
             // Must contain all positive literals
             if ((Xw[word] & pos[word]) != pos[word])   { ok = false; break; }
             // Must contain none of the negative literals
@@ -446,23 +444,36 @@ static vector<float> clause_outputs_from_words(const vector<uint64_t>& Xw, const
         }
 
         // If it passes all checks = 1, else 0
-        clauses[clause] = ok ? 1.0f : 0.0f;
+        clauses[clause] = (ok && has_included_literal) ? 1.0f : 0.0f;
     }
     return clauses;
 }
 
-// Predict glucose, start with the intercept as a baseline, then end up with the prediciton
-static float ridge_predict(const vector<float>& clauses, const Model& model) {
-    double prediction = (double)model.head_intercept;
-    for (int c = 0; c < model.n_clauses; c++)
-        prediction += (double)clauses[c] * (double)model.head_clause_weights[c];
-    return (float)prediction;
+static float weighted_clause_sum_predict(const std::vector<float>& clauses, const Model& model) {
+    double raw_sum = 0.0;
+
+    for (int clause = 0; clause < model.n_clauses; clause++) {
+        raw_sum += static_cast<double>(clauses[clause]) *
+            static_cast<double>(model.clause_weights[clause]);
+    }
+
+    if (model.t_param == 0 || model.max_y == model.min_y) {
+        return model.min_y;
+    }
+
+    const double scaled_prediction =
+        raw_sum * (static_cast<double>(model.max_y) - static_cast<double>(model.min_y)) /
+        static_cast<double>(model.t_param) +
+        static_cast<double>(model.min_y);
+
+    return static_cast<float>(scaled_prediction);
 }
+
 
 float predict_glucose_from_Xreal(const vector<double>& X_real,
                                    const Model& model) {
     auto X_bool    = booleanize(X_real, model);
     auto X_words   = pack_bits_to_words(X_bool, model.n_words);
     auto cl_out    = clause_outputs_from_words(X_words, model);
-    return ridge_predict(cl_out, model);
+    return weighted_clause_sum_predict(cl_out, model);
 }

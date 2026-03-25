@@ -14,8 +14,7 @@
 		725B732E2F5A377300911C34 /* GlucoseSession.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 725B73252F5A377300911C34 /* GlucoseSession.cpp */; };
 		725B732F2F5A377300911C34 /* inference.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 725B73272F5A377300911C34 /* inference.cpp */; };
 		725B737B2F5AF0E800911C34 /* pos_mask.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73772F5AF0E800911C34 /* pos_mask.bin */; };
-		725B737C2F5AF0E800911C34 /* head_clause_weights.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73732F5AF0E800911C34 /* head_clause_weights.bin */; };
-		725B737D2F5AF0E800911C34 /* head_intercept.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73742F5AF0E800911C34 /* head_intercept.bin */; };
+		725B737C2F5AF0E800911C34 /* clause_weights.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73732F5AF0E800911C34 /* clause_weights.bin */; };
 		725B737E2F5AF0E800911C34 /* y_tm.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73792F5AF0E800911C34 /* y_tm.bin */; };
 		725B737F2F5AF0E800911C34 /* neg_mask.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73762F5AF0E800911C34 /* neg_mask.bin */; };
 		725B73802F5AF0E800911C34 /* thresholds.bin in Resources */ = {isa = PBXBuildFile; fileRef = 725B73782F5AF0E800911C34 /* thresholds.bin */; };
@@ -43,8 +42,7 @@
 		725B73292F5A377300911C34 /* json.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = json.hpp; sourceTree = "<group>"; };
 		725B732A2F5A377300911C34 /* NativeSampleModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NativeSampleModule.h; sourceTree = "<group>"; };
 		725B732B2F5A377300911C34 /* NativeSampleModule.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = NativeSampleModule.cpp; sourceTree = "<group>"; };
-		725B73732F5AF0E800911C34 /* head_clause_weights.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = head_clause_weights.bin; sourceTree = "<group>"; };
-		725B73742F5AF0E800911C34 /* head_intercept.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = head_intercept.bin; sourceTree = "<group>"; };
+		725B73732F5AF0E800911C34 /* clause_weights.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = clause_weights.bin; sourceTree = "<group>"; };
 		725B73752F5AF0E800911C34 /* meta.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = meta.json; sourceTree = "<group>"; };
 		725B73762F5AF0E800911C34 /* neg_mask.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = neg_mask.bin; sourceTree = "<group>"; };
 		725B73772F5AF0E800911C34 /* pos_mask.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = pos_mask.bin; sourceTree = "<group>"; };
@@ -108,8 +106,7 @@
 		725B737A2F5AF0E800911C34 /* mobile_export */ = {
 			isa = PBXGroup;
 			children = (
-				725B73732F5AF0E800911C34 /* head_clause_weights.bin */,
-				725B73742F5AF0E800911C34 /* head_intercept.bin */,
+				725B73732F5AF0E800911C34 /* clause_weights.bin */,
 				725B73752F5AF0E800911C34 /* meta.json */,
 				725B73762F5AF0E800911C34 /* neg_mask.bin */,
 				725B73772F5AF0E800911C34 /* pos_mask.bin */,
@@ -225,8 +222,7 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				F309BC49B688FBF408E171EE /* PrivacyInfo.xcprivacy in Resources */,
 				725B737B2F5AF0E800911C34 /* pos_mask.bin in Resources */,
-				725B737C2F5AF0E800911C34 /* head_clause_weights.bin in Resources */,
-				725B737D2F5AF0E800911C34 /* head_intercept.bin in Resources */,
+				725B737C2F5AF0E800911C34 /* clause_weights.bin in Resources */,
 				725B737E2F5AF0E800911C34 /* y_tm.bin in Resources */,
 				725B737F2F5AF0E800911C34 /* neg_mask.bin in Resources */,
 				725B73802F5AF0E800911C34 /* thresholds.bin in Resources */,
@@ -342,6 +338,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MNX8VG5KP9;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = SampleApp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -371,7 +368,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MNX8VG5KP9;
 				INFOPLIST_FILE = SampleApp/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -386,6 +386,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = SampleApp;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
