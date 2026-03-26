@@ -3,9 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -14,14 +16,52 @@ import {
 } from 'react-native';
 import RNFS from 'react-native-fs';
 import NativeSampleModule from './specs/NativeSampleModule';
-const VAL_CSV_ASSET = require('./one_patient_val.csv');
+const ONE_PATIENT_VAL_ASSET = require('./one_patient_val.csv');
 
-async function loadValCsvLines(): Promise<string[]> {
-  const assetSource = Image.resolveAssetSource(VAL_CSV_ASSET);
+const PATIENT_VAL_ASSETS: Record<number, any> = {
+  1: require('./patient_val/patient_1_val.csv'),
+  2: require('./patient_val/patient_2_val.csv'),
+  3: require('./patient_val/patient_3_val.csv'),
+  4: require('./patient_val/patient_4_val.csv'),
+  5: require('./patient_val/patient_5_val.csv'),
+  6: require('./patient_val/patient_6_val.csv'),
+  7: require('./patient_val/patient_7_val.csv'),
+  8: require('./patient_val/patient_8_val.csv'),
+  9: require('./patient_val/patient_9_val.csv'),
+  10: require('./patient_val/patient_10_val.csv'),
+  11: require('./patient_val/patient_11_val.csv'),
+  12: require('./patient_val/patient_12_val.csv'),
+  13: require('./patient_val/patient_1_val_24h.csv'),
+};
+
+const DEFAULT_CSV_LINE =
+  '2021-11-07 00:00:00,136.0,0.0,0.0,0.0,93.0,0.01556,0.0,0.0,0.0,0.0';
+const SERVER_BASE_URL = 'http://192.168.68.131:8000';
+const PATIENT_VAL_FILE_NAMES: Record<number, string> = {
+  1: 'patient_1_val.csv',
+  2: 'patient_2_val.csv',
+  3: 'patient_3_val.csv',
+  4: 'patient_4_val.csv',
+  5: 'patient_5_val.csv',
+  6: 'patient_6_val.csv',
+  7: 'patient_7_val.csv',
+  8: 'patient_8_val.csv',
+  9: 'patient_9_val.csv',
+  10: 'patient_10_val.csv',
+  11: 'patient_11_val.csv',
+  12: 'patient_12_val.csv',
+  13: 'patient_1_val_24h.csv',
+};
+
+async function loadValCsvLines(
+  valAsset: any,
+  valFileName: string,
+): Promise<string[]> {
+  const assetSource = Image.resolveAssetSource(valAsset);
   const assetUri = assetSource?.uri;
 
   if (!assetUri) {
-    throw new Error('Could not resolve bundled one_patient_val.csv asset.');
+    throw new Error(`Could not resolve bundled ${valFileName} asset.`);
   }
 
   let csvText = '';
@@ -33,9 +73,13 @@ async function loadValCsvLines(): Promise<string[]> {
     }
     csvText = await response.text();
   } catch {
-    // Fallback for native bundle path if fetch(assetUri) is unavailable.
-    const bundlePath = `${RNFS.MainBundlePath}/one_patient_val.csv`;
-    csvText = await RNFS.readFile(bundlePath, 'utf8');
+    // Fallback: Android assets vs iOS bundle.
+    if (Platform.OS === 'android') {
+      csvText = await RNFS.readFileAssets(valFileName, 'utf8');
+    } else {
+      const bundlePath = `${RNFS.MainBundlePath}/${valFileName}`;
+      csvText = await RNFS.readFile(bundlePath, 'utf8');
+    }
   }
 
   const lines = csvText
@@ -44,7 +88,7 @@ async function loadValCsvLines(): Promise<string[]> {
     .filter(Boolean);
 
   if (lines.length === 0) {
-    throw new Error('one_patient_val.csv is empty.');
+    throw new Error(`${valFileName} is empty.`);
   }
 
   const firstLine = lines[0].toLowerCase();
@@ -55,7 +99,7 @@ async function loadValCsvLines(): Promise<string[]> {
 
   const validLines = dataLines.filter(line => line.split(',').length === 11);
   if (validLines.length === 0) {
-    throw new Error('one_patient_val.csv has no valid 11-field data lines.');
+    throw new Error(`${valFileName} has no valid 11-field data lines.`);
   }
 
   return validLines;
@@ -99,19 +143,123 @@ function formatPerfSummary(label: string, latenciesMs: number[]): string {
 export default function App() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [csvLine, setCsvLine] = useState('');
+  const [csvLine, setCsvLine] = useState(DEFAULT_CSV_LINE);
   const [prediction, setPrediction] = useState<number | null>(null);
   const [readingCount, setReadingCount] = useState(0);
   const [log, setLog] = useState<LogEntry[]>([]);
   const predictionsRef = useRef<PredictionRow[]>([]);
   const requestTimesRef = useRef<number[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<number>(1);
+  const [valPickerOpen, setValPickerOpen] = useState(false);
+  const [useServer, setUseServer] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
+
+  const selectedValFileName =
+    PATIENT_VAL_FILE_NAMES[selectedPatientId] ??
+    `patient_${selectedPatientId}_val.csv`;
+  const selectedValAsset =
+    PATIENT_VAL_ASSETS[selectedPatientId] ?? ONE_PATIENT_VAL_ASSET;
 
   // Adds a new log entry and scrolls to the bottom
   function addLog(text: string, kind: LogEntry['kind'] = 'info') {
     setLog(prev => [...prev, { text, kind }].slice(-LOG_CAP));
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  }
+
+  function lineToServerPayload(line: string) {
+    const parts = line.split(',');
+    if (parts.length !== 11) {
+      throw new Error(`Bad field count: ${parts.length}. Expected 11 raw fields.`);
+    }
+
+    const [
+      datetime,
+      glucose,
+      meal,
+      exercise,
+      heartRate,
+      steps,
+      sleep,
+      bolus,
+      basal,
+      ,
+      ,
+    ] = parts;
+
+    return {
+      datetime,
+      payload: {
+        glucose: parseFloat(glucose),
+        meal: parseFloat(meal || '0'),
+        bolus: parseFloat(bolus || '0'),
+        basal: parseFloat(basal || '0'),
+        exercise: parseFloat(exercise || '0'),
+        basis_heart_rate: parseFloat(heartRate || '0'),
+        basis_steps: parseFloat(steps || '0'),
+        basis_sleep: parseFloat(sleep || '0'),
+        timestamp: datetime,
+      },
+    };
+  }
+
+  async function resetServerSession() {
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      await fetch(`${SERVER_BASE_URL}/reset`, {
+        method: 'POST',
+        headers,
+        body: '{}',
+      });
+    } catch {
+      // Ignore reset failures so a later request can report the real issue.
+    }
+  }
+
+  async function sendServerReading(line: string, count: number) {
+    const headers = { 'Content-Type': 'application/json' };
+    const { datetime, payload } = lineToServerPayload(line);
+    const extras: string[] = [];
+    if (payload.meal > 0) extras.push(`meal=${payload.meal}g`);
+    if (payload.bolus > 0) extras.push(`bolus=${payload.bolus}u`);
+    const extrasStr = extras.length ? ` [${extras.join(', ')}]` : '';
+
+    const t0 = performance.now();
+    const res = await fetch(`${SERVER_BASE_URL}/predict`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const latencyMs = performance.now() - t0;
+    const data = await res.json();
+    const pred = data.prediction as number | null;
+    const predictMs = data.predict_ms as number | null;
+    const status = data.message ?? '';
+
+    requestTimesRef.current.push(latencyMs);
+    setReadingCount(count);
+
+    if (pred != null && !isNaN(pred)) {
+      setPrediction(pred);
+      addLog(
+        `${datetime} glucose=${payload.glucose}${extrasStr} → ${pred.toFixed(4)} mg/dL (status="${status}" request=${latencyMs.toFixed(2)}ms predict=${predictMs ?? '—'}ms)`,
+        'ok',
+      );
+    } else {
+      setPrediction(null);
+      addLog(
+        `${datetime} glucose=${payload.glucose}${extrasStr} → (not ready) (status="${status}" request=${latencyMs.toFixed(2)}ms predict=${predictMs ?? '—'}ms)`,
+        'warn',
+      );
+    }
+
+    return {
+      datetime,
+      glucose: String(payload.glucose),
+      prediction: pred != null && !isNaN(pred) ? pred.toFixed(4) : '',
+      requestMs: latencyMs.toFixed(2),
+      predictMs: predictMs != null ? String(predictMs) : '',
+    };
   }
 
   // runs once when the app starts
@@ -124,8 +272,7 @@ export default function App() {
         'thresholds.bin',
         'pos_mask.bin',
         'neg_mask.bin',
-        'head_clause_weights.bin',
-        'head_intercept.bin',
+        'clause_weights.bin'
       ];
 
       try {
@@ -176,14 +323,23 @@ export default function App() {
     }
 
     try {
-      const timelineLines = await loadValCsvLines();
+      const timelineLines = await loadValCsvLines(
+        selectedValAsset,
+        selectedValFileName,
+      );
 
-      // Reset the timeline
-      NativeSampleModule.reset();
+      if (useServer) {
+        await resetServerSession();
+      } else {
+        NativeSampleModule.reset();
+      }
       setReadingCount(0);
       setPrediction(null);
       predictionsRef.current = [];
-      addLog(`── Running one_patient_val.csv timeline (${timelineLines.length} rows) ──`, 'info');
+      addLog(
+        `── Running ${selectedValFileName} timeline on ${useServer ? 'server' : 'device'} (${timelineLines.length} rows) ──`,
+        'info',
+      );
 
       let count = 0;
       let lastPrediction: number | null = null;
@@ -191,35 +347,42 @@ export default function App() {
       const runRequestTimesMs: number[] = [];
 
       for (const line of timelineLines) {
-        const tRequestStart = performance.now();
-        NativeSampleModule.addReading(line);
         count++;
+        if (useServer) {
+          const serverRow = await sendServerReading(line, count);
+          runRequestTimesMs.push(Number(serverRow.requestMs));
+          predictionsRef.current.push(serverRow);
+          if (serverRow.prediction) lastPrediction = Number(serverRow.prediction);
+        } else {
+          const tRequestStart = performance.now();
+          NativeSampleModule.addReading(line);
 
-        const tPredictStart = performance.now();
-        const result = NativeSampleModule.predict();
-        const predictMs = performance.now() - tPredictStart;
-        const requestMs = performance.now() - tRequestStart;
+          const tPredictStart = performance.now();
+          const result = NativeSampleModule.predict();
+          const predictMs = performance.now() - tPredictStart;
+          const requestMs = performance.now() - tRequestStart;
 
-        runRequestTimesMs.push(requestMs);
-        requestTimesRef.current.push(requestMs);
+          runRequestTimesMs.push(requestMs);
+          requestTimesRef.current.push(requestMs);
 
-        const [datetime, glucose] = line.split(',');
-        const predStr = isNaN(result)
-          ? '(not ready)'
-          : `${result.toFixed(4)} mg/dL`;
-        addLog(
-          `${datetime} glucose=${glucose} → ${predStr} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
-          isNaN(result) ? 'warn' : 'ok',
-        );
-        predictionsRef.current.push({
-          datetime,
-          glucose,
-          prediction: isNaN(result) ? '' : result.toFixed(4),
-          requestMs: requestMs.toFixed(2),
-          predictMs: predictMs.toFixed(2),
-        });
+          const [datetime, glucose] = line.split(',');
+          const predStr = isNaN(result)
+            ? '(not ready)'
+            : `${result.toFixed(4)} mg/dL`;
+          addLog(
+            `${datetime} glucose=${glucose} → ${predStr} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
+            isNaN(result) ? 'warn' : 'ok',
+          );
+          predictionsRef.current.push({
+            datetime,
+            glucose,
+            prediction: isNaN(result) ? '' : result.toFixed(4),
+            requestMs: requestMs.toFixed(2),
+            predictMs: predictMs.toFixed(2),
+          });
 
-        if (!isNaN(result)) lastPrediction = result;
+          if (!isNaN(result)) lastPrediction = result;
+        }
       }
 
       setReadingCount(count);
@@ -227,7 +390,7 @@ export default function App() {
 
       if (lastPrediction !== null) setPrediction(lastPrediction);
       addLog(
-        formatPerfSummary('one_patient_val.csv run metrics', runRequestTimesMs),
+        formatPerfSummary(`${selectedValFileName} run metrics`, runRequestTimesMs),
         'info',
       );
       addLog(
@@ -243,7 +406,7 @@ export default function App() {
   }
 
   // Sends the line in the custom raw line. ONLY FOR DEBUG
-  function handleAddReading() {
+  async function handleAddReading() {
     if (!modelLoaded) {
       addLog('Model not loaded.', 'warn');
       return;
@@ -256,6 +419,26 @@ export default function App() {
 
     const tButtonStart = performance.now();
     try {
+      if (useServer) {
+        const fieldCount = line.split(',').length;
+        if (fieldCount !== 11) {
+          addLog(
+            `Bad field count: ${fieldCount}. Server mode expects 11 raw fields.`,
+            'err',
+          );
+          return;
+        }
+
+        const count = readingCount + 1;
+        const serverRow = await sendServerReading(line, count);
+        predictionsRef.current.push(serverRow);
+        addLog(
+          formatPerfSummary('Session request metrics', requestTimesRef.current),
+          'info',
+        );
+        return;
+      }
+
       const fieldCount = line.split(',').length;
       if (fieldCount === 11) {
         NativeSampleModule.addReading(line);
@@ -301,6 +484,9 @@ export default function App() {
 
   function handleReset() {
     NativeSampleModule.reset();
+    if (useServer) {
+      resetServerSession();
+    }
     requestTimesRef.current = [];
     predictionsRef.current = [];
     setReadingCount(0);
@@ -382,7 +568,75 @@ export default function App() {
           placeholderTextColor="#888"
         />
 
-        {/* Buttons */}
+        {/* Val file selector */}
+        <TouchableOpacity
+          style={[styles.pill, styles.pillNeutral]}
+          onPress={() => setValPickerOpen(true)}
+        >
+          <Text style={styles.pillText}>Val file: {selectedValFileName}</Text>
+        </TouchableOpacity>
+
+        <View style={styles.toggleRow}>
+          <View style={styles.toggleTextWrap}>
+            <Text style={styles.toggleLabel}>Run On Server</Text>
+            <Text style={styles.toggleSubLabel}>
+              {useServer
+                ? 'Timeline and Add + Predict will use the backend.'
+                : 'Timeline and Add + Predict will use the on-device model.'}
+            </Text>
+          </View>
+          <Switch
+            value={useServer}
+            onValueChange={setUseServer}
+            trackColor={{ false: '#c7c7c7', true: '#9fa8da' }}
+            thumbColor={useServer ? '#1a237e' : '#f4f4f4'}
+          />
+        </View>
+
+        <Modal
+          transparent
+          visible={valPickerOpen}
+          animationType="fade"
+          onRequestClose={() => setValPickerOpen(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setValPickerOpen(false)}
+          />
+          <View style={styles.modalSheet}>
+            <ScrollView style={styles.modalList}>
+              {Array.from({ length: 13 }, (_, i) => i + 1).map(id => {
+                const name =
+                  PATIENT_VAL_FILE_NAMES[id] ?? `patient_${id}_val.csv`;
+                const isSelected = id === selectedPatientId;
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    style={[
+                      styles.modalItem,
+                      isSelected && styles.modalItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedPatientId(id);
+                      setValPickerOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.modalItemText,
+                        isSelected && styles.modalItemTextSelected,
+                      ]}
+                    >
+                      {name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </Modal>
+
         <View style={styles.buttonRow}>
           <TouchableOpacity
             style={[
@@ -393,7 +647,9 @@ export default function App() {
             onPress={handleRunTimeline}
             disabled={!modelLoaded}
           >
-            <Text style={styles.btnText}>Run val.csv Timeline</Text>
+            <Text style={styles.btnText}>
+              Run {selectedValFileName} Timeline
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -473,6 +729,7 @@ const styles = StyleSheet.create({
   pillOk: { backgroundColor: '#2e7d32' },
   pillWarn: { backgroundColor: '#b71c1c' },
   pillText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  pillNeutral: { backgroundColor: '#444' },
 
   predBox: {
     backgroundColor: '#fff',
@@ -496,6 +753,43 @@ const styles = StyleSheet.create({
   predUnit: { fontSize: 18, color: '#5c6bc0', marginTop: -4, marginBottom: 4 },
   predSub: { fontSize: 12, color: '#aaa', marginTop: 6 },
 
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  modalSheet: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    right: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  modalList: { maxHeight: 320 },
+  modalItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#f2f2f2',
+    marginBottom: 8,
+  },
+  modalItemSelected: {
+    backgroundColor: '#1a237e',
+  },
+  modalItemText: {
+    color: '#111',
+    fontWeight: '600',
+  },
+  modalItemTextSelected: {
+    color: '#fff',
+  },
+
   inputLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -514,6 +808,22 @@ const styles = StyleSheet.create({
     minHeight: 60,
     marginBottom: 14,
   },
+
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  toggleTextWrap: { flex: 1, paddingRight: 12 },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: '#111' },
+  toggleSubLabel: { fontSize: 12, color: '#666', marginTop: 2 },
 
   buttonRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   btn: { flex: 1, paddingVertical: 13, borderRadius: 8, alignItems: 'center' },

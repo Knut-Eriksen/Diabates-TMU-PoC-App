@@ -47,6 +47,9 @@ struct Model {
     int n_bits_total = 0;
     int n_clauses    = 0;
     int n_words      = 0;
+    int t_param = 0;
+    float min_y = 0.0f;
+    float max_y = 0.0f;
 
     // Thresholds
     std::vector<int32_t> threshold_offsets;
@@ -56,7 +59,6 @@ struct Model {
     std::vector<uint64_t> pos_mask;
     std::vector<uint64_t> neg_mask;
 
-    // Ridge head stuff
-    std::vector<float> head_clause_weights;
-    float              head_intercept = 0.0f;
+    // TM clause weights
+    std::vector<float> clause_weights;
 };
