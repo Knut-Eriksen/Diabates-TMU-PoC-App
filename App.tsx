@@ -35,6 +35,12 @@ export default function App() {
     handleAddReading,
     handleReset,
     handleSavePredictionsCsv,
+    handleStartBenchmark,
+    finish,
+    benchmarkRunning,
+    benchmarkReadingsDone,
+    benchmarkTotalReadings,
+    benchmarkElapsedS,
   } = useAppFunctions();
 
   return (
@@ -176,6 +182,17 @@ export default function App() {
             onPress={handleSavePredictionsCsv}
           >
             <Text style={[styles.btnText, { color: '#333' }]}>Save Predictions CSV</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.btn, benchmarkRunning ? styles.btnPrimary : styles.btnSecondary]}
+            onPress={benchmarkRunning ? finish : handleStartBenchmark}
+          >
+            <Text style={[styles.btnText, benchmarkRunning ? {} : { color: '#333' }]}>
+              {benchmarkRunning
+                ? `Stop Benchmark (${benchmarkReadingsDone}/${benchmarkTotalReadings} · ${Math.floor(benchmarkElapsedS / 60)}m)`
+                : '8h Benchmark'}
+            </Text>
           </TouchableOpacity>
         </View>
 

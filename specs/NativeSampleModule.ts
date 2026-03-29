@@ -17,6 +17,9 @@ export interface Spec extends TurboModule {
 
   // Clear all readings
   reset(): void;
+
+  // Process CPU usage as a percentage. Returns -1 if unavailable.
+  getCpuUsage(): number;
 }
 
 // Checks the native module exists

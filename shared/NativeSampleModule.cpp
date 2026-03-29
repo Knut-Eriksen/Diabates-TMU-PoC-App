@@ -2,10 +2,11 @@
 
 #include <stdexcept>
 #include <cmath>
+extern "C" float perfGetCpuUsage(void);
 
 namespace facebook::react {
 
-// Each method simply forwards to session_    
+// Each method simply forwards to session_
 NativeSampleModule::NativeSampleModule(std::shared_ptr<CallInvoker> jsInvoker)
     : NativeSampleModuleCxxSpec(std::move(jsInvoker)) {}
 
@@ -28,6 +29,10 @@ double NativeSampleModule::predict(jsi::Runtime&) {
 
 void NativeSampleModule::reset(jsi::Runtime&) {
     session_.reset();
+}
+
+double NativeSampleModule::getCpuUsage(jsi::Runtime&) {
+    return static_cast<double>(perfGetCpuUsage());
 }
 
 } // namespace facebook::react

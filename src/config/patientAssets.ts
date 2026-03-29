@@ -35,4 +35,4 @@ export const PATIENT_VAL_FILE_NAMES: Record<number, string> = {
 export const DEFAULT_CSV_LINE =
   '2021-11-07 00:00:00,136.0,0.0,0.0,0.0,93.0,0.01556,0.0,0.0,0.0,0.0';
 
-export const SERVER_BASE_URL = 'http://192.168.68.131:8000';
+export const SERVER_BASE_URL = 'https://cfdf-79-161-109-4.ngrok-free.app';

@@ -11,6 +11,7 @@ import {
   SERVER_BASE_URL,
 } from '../config/patientAssets';
 import { LogEntry, PredictionRow, LOG_CAP } from '../types/types';
+import { useBenchmark } from './benchmarkFunctions';
 
 export function useAppFunctions() {
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -38,12 +39,33 @@ export function useAppFunctions() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }
 
+  const {
+    benchmarkRunning,
+    readingsDone: benchmarkReadingsDone,
+    totalReadings: benchmarkTotalReadings,
+    elapsedS: benchmarkElapsedS,
+    startBenchmark,
+    finish,
+  } = useBenchmark(addLog);
+
   function lineToServerPayload(line: string) {
     const parts = line.split(',');
     if (parts.length !== 11) {
       throw new Error(`Bad field count: ${parts.length}. Expected 11 raw fields.`);
     }
-    const [datetime, glucose, meal, exercise, heartRate, steps, sleep, bolus, basal] = parts;
+    const [
+      datetime,
+      glucose,
+      _missingBg,
+      meal,
+      exercise,
+      heartRate,
+      _gsr,
+      steps,
+      sleep,
+      bolus,
+      basal,
+    ] = parts;
     return {
       datetime,
       payload: {
@@ -307,6 +329,33 @@ export function useAppFunctions() {
     }
   }
 
+  async function handleStartBenchmark() {
+    try {
+      const lines = await loadValCsvLines(selectedValAsset, selectedValFileName);
+      requestTimesRef.current = [];
+      predictionsRef.current = [];
+      setReadingCount(0);
+      setPrediction(null);
+
+      if (useServer) {
+        await resetServerSession();
+        await startBenchmark(
+          lines,
+          async (line, count) => {
+            const serverRow = await sendServerReading(line, count);
+            predictionsRef.current.push(serverRow);
+          },
+          'server',
+        );
+      } else {
+        NativeSampleModule.reset();
+        await startBenchmark(lines, undefined, 'device');
+      }
+    } catch (e: any) {
+      addLog(`Benchmark load error: ${e?.message ?? e}`, 'err');
+    }
+  }
+
   function handleReset() {
     NativeSampleModule.reset();
     if (useServer) resetServerSession();
@@ -363,5 +412,12 @@ export function useAppFunctions() {
     handleAddReading,
     handleReset,
     handleSavePredictionsCsv,
+    handleStartBenchmark,
+    finish,
+    // benchmark state
+    benchmarkRunning,
+    benchmarkReadingsDone,
+    benchmarkTotalReadings,
+    benchmarkElapsedS,
   };
 }

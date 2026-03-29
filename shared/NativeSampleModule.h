@@ -33,6 +33,9 @@ public:
     // Clear accumulated history. Model stays loaded.
     void reset(jsi::Runtime& rt);
 
+    // Process CPU usage as a percentage.
+    double getCpuUsage(jsi::Runtime& rt);
+
 private:
     glucose::GlucoseSession session_;
 };
