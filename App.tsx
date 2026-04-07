@@ -207,7 +207,7 @@ export default function App() {
                 onPress={handleRunTimeline}
                 disabled={!modelLoaded}
               >
-                <Text style={styles.btnText}>Run {selectedValFileName} Timeline</Text>
+                <Text style={styles.btnText}>Run Timeline</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -243,6 +243,20 @@ export default function App() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Latest log preview */}
+            {log.length > 0 && (
+              <Text style={styles.logLabel}>Latest log output</Text>
+            )}
+            {log.length > 0 && (
+              <Text
+                style={[styles.logLine, logLineStyle(log[log.length - 1].kind), styles.logPreview]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {log[log.length - 1].text}
+              </Text>
+            )}
           </>
         ) : (
           <>

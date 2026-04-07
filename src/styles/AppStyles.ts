@@ -167,4 +167,14 @@ export const styles = StyleSheet.create({
     lineHeight: 18,
   },
   logEmpty: { fontSize: 12, color: '#bbb', fontStyle: 'italic' },
+  logPreview: {
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    minHeight: 52,
+  },
 });
