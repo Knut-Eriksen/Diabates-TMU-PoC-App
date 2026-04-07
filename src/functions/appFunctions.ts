@@ -9,6 +9,8 @@ import {
   ONE_PATIENT_VAL_ASSET,
   DEFAULT_CSV_LINE,
   SERVER_BASE_URL,
+  GLUCOSE_TIMELINE_API_BASE_URL,
+  GLUCOSE_CONNECTION_ID,
 } from '../config/patientAssets';
 import { LogEntry, PredictionRow, LOG_CAP } from '../types/types';
 import { useBenchmark } from './benchmarkFunctions';
@@ -23,6 +25,7 @@ export function useAppFunctions() {
   const [selectedPatientId, setSelectedPatientId] = useState<number>(1);
   const [valPickerOpen, setValPickerOpen] = useState(false);
   const [useServer, setUseServer] = useState(false);
+  const [useTimelineApi, setUseTimelineApi] = useState(false);
 
   const predictionsRef = useRef<PredictionRow[]>([]);
   const requestTimesRef = useRef<number[]>([]);
@@ -92,6 +95,161 @@ export function useAppFunctions() {
     } catch {
       // Ignore reset failures so a later request can report the real issue.
     }
+
+    try {
+      await fetch(`${normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL)}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch {
+      // Best effort reset for local timeline API index.
+    }
+  }
+
+  function normalizeApiBaseUrl(url: string): string {
+    return url.endsWith('/') ? url.slice(0, -1) : url;
+  }
+
+  function buildDefaultCsvLine(
+    datetime: string,
+    glucose: number,
+    extras?: { meal?: number; bolus?: number },
+  ): string {
+    const meal = Number.isFinite(extras?.meal) ? Number(extras?.meal) : 0;
+    const bolus = Number.isFinite(extras?.bolus) ? Number(extras?.bolus) : 0;
+    return [
+      datetime,
+      glucose.toFixed(1),
+      '0.0',
+      meal.toFixed(1),
+      '0.0',
+      '93.0',
+      '0.01556',
+      '0.0',
+      '0.0',
+      bolus.toFixed(1),
+      '0.0',
+    ].join(',');
+  }
+
+  function parseNumberish(value: unknown): number | null {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function parseLluGlucoseRow(row: any): string | null {
+    if (!row || typeof row !== 'object') return null;
+    const glucose =
+      parseNumberish(row?.ValueInMgPerDl) ??
+      parseNumberish(row?.glucose) ??
+      parseNumberish(row?.bg) ??
+      parseNumberish(row?.blood_glucose) ??
+      parseNumberish(row?.value) ??
+      parseNumberish(row?.Value);
+    if (glucose == null) return null;
+
+    const datetime = String(
+      row?.Timestamp ??
+        row?.timestamp ??
+        row?.datetime ??
+        row?.display_time ??
+        row?.date ??
+        row?.time ??
+        new Date().toISOString().slice(0, 19).replace('T', ' '),
+    ).replace('T', ' ');
+
+    const meal = parseNumberish(row?.carbs) ?? parseNumberish(row?.meal) ?? 0;
+    const bolus = parseNumberish(row?.insulin) ?? parseNumberish(row?.bolus) ?? 0;
+    return buildDefaultCsvLine(datetime, glucose, { meal, bolus });
+  }
+
+  function parseGraphApiToCsvLines(data: any): string[] {
+    const graphRows = Array.isArray(data?.data?.graphData)
+      ? data.data.graphData
+      : Array.isArray(data?.graphData)
+        ? data.graphData
+        : [];
+    return graphRows
+      .map((row: any) => parseLluGlucoseRow(row))
+      .filter((line: string | null): line is string => Boolean(line));
+  }
+
+  function collectGlucoseRows(value: any, acc: any[] = []): any[] {
+    if (Array.isArray(value)) {
+      value.forEach(item => collectGlucoseRows(item, acc));
+      return acc;
+    }
+
+    if (!value || typeof value !== 'object') {
+      return acc;
+    }
+
+    const glucoseKeys = ['glucose', 'value', 'bg', 'blood_glucose'];
+    const hasGlucose = glucoseKeys.some(key => value[key] != null);
+    if (hasGlucose) {
+      acc.push(value);
+    }
+
+    Object.values(value).forEach(child => {
+      if (child && typeof child === 'object') {
+        collectGlucoseRows(child, acc);
+      }
+    });
+
+    return acc;
+  }
+
+  function parseApiRowsToCsvLines(data: any): string[] {
+    const rows = collectGlucoseRows(data);
+    return rows
+      .map((row: any) => parseLluGlucoseRow(row))
+      .filter((line: string | null): line is string => Boolean(line));
+  }
+
+  async function loadTimelineLines(): Promise<string[]> {
+    if (!useTimelineApi) {
+      return loadValCsvLines(selectedValAsset, selectedValFileName);
+    }
+
+    const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
+    const connId = GLUCOSE_CONNECTION_ID;
+    const graphUrl = `${baseUrl}/llu/connections/${connId}/graph`;
+
+    try {
+      const res = await fetch(graphUrl);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} (${graphUrl})`);
+      }
+
+      const json = await res.json();
+      const lines = parseGraphApiToCsvLines(json);
+      if (lines.length > 0) {
+        addLog(`Loaded ${lines.length} readings from timeline API: ${graphUrl}`, 'ok');
+        return lines;
+      }
+      throw new Error(`No parseable glucose rows from ${graphUrl}`);
+    } catch (e: any) {
+      const lastError = e?.message ?? String(e);
+      throw new Error(
+        `Failed to load timeline from API graph (${GLUCOSE_TIMELINE_API_BASE_URL}). ${lastError}`,
+      );
+    }
+  }
+
+  async function fetchCurrentTimelineLine(): Promise<string> {
+    const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
+    const connId = GLUCOSE_CONNECTION_ID;
+    const currentUrl = `${baseUrl}/llu/connections/${connId}/current`;
+    const res = await fetch(currentUrl);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} (${currentUrl})`);
+    }
+    const json = await res.json();
+    const lines = parseApiRowsToCsvLines(json);
+    if (lines.length === 0) {
+      throw new Error(`No parseable glucose row from ${currentUrl}`);
+    }
+    return lines[0];
   }
 
   async function sendServerReading(line: string, count: number): Promise<PredictionRow> {
@@ -199,7 +357,8 @@ export function useAppFunctions() {
     }
 
     try {
-      const timelineLines = await loadValCsvLines(selectedValAsset, selectedValFileName);
+      const timelineLines = await loadTimelineLines();
+      const timelineLabel = useTimelineApi ? 'timeline API' : selectedValFileName;
 
       if (useServer) {
         await resetServerSession();
@@ -210,7 +369,7 @@ export function useAppFunctions() {
       setPrediction(null);
       predictionsRef.current = [];
       addLog(
-        `── Running ${selectedValFileName} timeline on ${useServer ? 'server' : 'device'} (${timelineLines.length} rows) ──`,
+        `── Running ${timelineLabel} on ${useServer ? 'server' : 'device'} (${timelineLines.length} rows) ──`,
         'info',
       );
 
@@ -257,7 +416,7 @@ export function useAppFunctions() {
       setReadingCount(count);
       setCsvLine(timelineLines[0]);
       if (lastPrediction !== null) setPrediction(lastPrediction);
-      addLog(formatPerfSummary(`${selectedValFileName} run metrics`, runRequestTimesMs), 'info');
+      addLog(formatPerfSummary(`${timelineLabel} run metrics`, runRequestTimesMs), 'info');
       addLog(formatPerfSummary('Session request metrics', requestTimesRef.current), 'info');
     } catch (e: any) {
       addLog(`Error: ${e?.message ?? e}`, 'err');
@@ -331,7 +490,7 @@ export function useAppFunctions() {
 
   async function handleStartBenchmark() {
     try {
-      const lines = await loadValCsvLines(selectedValAsset, selectedValFileName);
+      const timelineLabel = useTimelineApi ? 'timeline API current endpoint' : selectedValFileName;
       requestTimesRef.current = [];
       predictionsRef.current = [];
       setReadingCount(0);
@@ -339,17 +498,66 @@ export function useAppFunctions() {
 
       if (useServer) {
         await resetServerSession();
+        if (useTimelineApi) {
+          await startBenchmark(
+            ['api-current'],
+            async (_line, count) => {
+              const currentLine = await fetchCurrentTimelineLine();
+              const serverRow = await sendServerReading(currentLine, count);
+              predictionsRef.current.push(serverRow);
+            },
+            `server (${timelineLabel})`,
+          );
+          return;
+        }
+
+        const lines = await loadTimelineLines();
         await startBenchmark(
           lines,
           async (line, count) => {
             const serverRow = await sendServerReading(line, count);
             predictionsRef.current.push(serverRow);
           },
-          'server',
+          `server (${timelineLabel})`,
         );
       } else {
         NativeSampleModule.reset();
-        await startBenchmark(lines, undefined, 'device');
+        if (useTimelineApi) {
+          await resetServerSession();
+          await startBenchmark(
+            ['api-current'],
+            async (_line, count) => {
+              const currentLine = await fetchCurrentTimelineLine();
+              const tRequestStart = performance.now();
+              NativeSampleModule.addReading(currentLine);
+              const tPredictStart = performance.now();
+              const result = NativeSampleModule.predict();
+              const predictMs = performance.now() - tPredictStart;
+              const requestMs = performance.now() - tRequestStart;
+
+              requestTimesRef.current.push(requestMs);
+              const [datetime, glucose] = currentLine.split(',');
+              addLog(
+                `${datetime} glucose=${glucose} → ${isNaN(result) ? '(not ready)' : `${result.toFixed(4)} mg/dL`} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
+                isNaN(result) ? 'warn' : 'ok',
+              );
+              predictionsRef.current.push({
+                datetime,
+                glucose,
+                prediction: isNaN(result) ? '' : result.toFixed(4),
+                requestMs: requestMs.toFixed(2),
+                predictMs: predictMs.toFixed(2),
+              });
+              setReadingCount(count);
+              if (!isNaN(result)) setPrediction(result);
+            },
+            `device (${timelineLabel})`,
+          );
+          return;
+        }
+
+        const lines = await loadTimelineLines();
+        await startBenchmark(lines, undefined, `device (${timelineLabel})`);
       }
     } catch (e: any) {
       addLog(`Benchmark load error: ${e?.message ?? e}`, 'err');
@@ -404,6 +612,8 @@ export function useAppFunctions() {
     setValPickerOpen,
     useServer,
     setUseServer,
+    useTimelineApi,
+    setUseTimelineApi,
     selectedValFileName,
     // refs
     scrollRef,

@@ -19,6 +19,23 @@ export const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
 
   title: { fontSize: 22, fontWeight: '700', marginBottom: 12, color: '#111' },
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#e8eaf6',
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 14,
+    gap: 6,
+  },
+  tabBtn: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  tabBtnActive: { backgroundColor: '#1a237e' },
+  tabBtnText: { color: '#1a237e', fontWeight: '600' },
+  tabBtnTextActive: { color: '#fff' },
 
   pill: {
     alignSelf: 'flex-start',
@@ -141,6 +158,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ddd',
     padding: 10,
+    marginBottom: 12,
   },
   logLine: {
     fontSize: 12,
