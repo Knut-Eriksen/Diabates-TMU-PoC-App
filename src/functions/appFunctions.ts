@@ -137,26 +137,37 @@ export function useAppFunctions() {
     return Number.isFinite(n) ? n : null;
   }
 
+  function normalizeLluTimestamp(raw: string): string {
+    // ISO format: "2024-11-14T10:15:27" or "2024-11-14 10:15:27" → already correct
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+      return raw.replace('T', ' ').substring(0, 19);
+    }
+
+    // LibreLink Up format: "11/14/2024 10:15:27 AM" → "2024-11-14 10:15:27"
+    const lluMatch = raw.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?/i,
+    );
+    if (lluMatch) {
+      const [, month, day, year, rawHour, min, sec, ampm] = lluMatch;
+      let hour = parseInt(rawHour, 10);
+      if (ampm) {
+        if (ampm.toUpperCase() === 'AM' && hour === 12) hour = 0;
+        if (ampm.toUpperCase() === 'PM' && hour !== 12) hour += 12;
+      }
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${String(hour).padStart(2, '0')}:${min}:${sec}`;
+    }
+
+    // Fallback: return as-is and let C++ try
+    return raw.replace('T', ' ').substring(0, 19);
+  }
+
   function parseLluGlucoseRow(row: any): string | null {
     if (!row || typeof row !== 'object') return null;
-    const glucose =
-      parseNumberish(row?.ValueInMgPerDl) ??
-      parseNumberish(row?.glucose) ??
-      parseNumberish(row?.bg) ??
-      parseNumberish(row?.blood_glucose) ??
-      parseNumberish(row?.value) ??
-      parseNumberish(row?.Value);
+    const glucose = parseNumberish(row?.ValueInMgPerDl);
     if (glucose == null) return null;
 
-    const datetime = String(
-      row?.Timestamp ??
-        row?.timestamp ??
-        row?.datetime ??
-        row?.display_time ??
-        row?.date ??
-        row?.time ??
-        new Date().toISOString().slice(0, 19).replace('T', ' '),
-    ).replace('T', ' ');
+    const datetime = normalizeLluTimestamp(String(row?.Timestamp ?? row?.FactoryTimestamp ?? ''));
+    if (!datetime) return null;
 
     const meal = parseNumberish(row?.carbs) ?? parseNumberish(row?.meal) ?? 0;
     const bolus = parseNumberish(row?.insulin) ?? parseNumberish(row?.bolus) ?? 0;
