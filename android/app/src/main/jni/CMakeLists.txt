@@ -8,6 +8,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   ../../../../../shared/NativeSampleModule.cpp
   ../../../../../shared/GlucoseSession.cpp
   ../../../../../shared/inference.cpp
+  ../../../../../shared/perf_android.cpp
 )
 
 
