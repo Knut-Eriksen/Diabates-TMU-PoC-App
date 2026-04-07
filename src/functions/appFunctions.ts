@@ -186,38 +186,6 @@ export function useAppFunctions() {
       .filter((line: string | null): line is string => Boolean(line));
   }
 
-  function collectGlucoseRows(value: any, acc: any[] = []): any[] {
-    if (Array.isArray(value)) {
-      value.forEach(item => collectGlucoseRows(item, acc));
-      return acc;
-    }
-
-    if (!value || typeof value !== 'object') {
-      return acc;
-    }
-
-    const glucoseKeys = ['glucose', 'value', 'bg', 'blood_glucose'];
-    const hasGlucose = glucoseKeys.some(key => value[key] != null);
-    if (hasGlucose) {
-      acc.push(value);
-    }
-
-    Object.values(value).forEach(child => {
-      if (child && typeof child === 'object') {
-        collectGlucoseRows(child, acc);
-      }
-    });
-
-    return acc;
-  }
-
-  function parseApiRowsToCsvLines(data: any): string[] {
-    const rows = collectGlucoseRows(data);
-    return rows
-      .map((row: any) => parseLluGlucoseRow(row))
-      .filter((line: string | null): line is string => Boolean(line));
-  }
-
   async function loadTimelineLines(): Promise<string[]> {
     if (!useTimelineApi) {
       return loadValCsvLines(selectedValAsset, selectedValFileName);
@@ -248,20 +216,22 @@ export function useAppFunctions() {
     }
   }
 
-  async function fetchCurrentTimelineLine(): Promise<string> {
+  // Fetches the graph endpoint and returns the most recent reading (last in graphData).
+  async function fetchLatestFromGraph(): Promise<string> {
     const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
     const connId = GLUCOSE_CONNECTION_ID;
-    const currentUrl = `${baseUrl}/llu/connections/${connId}/current`;
-    const res = await fetch(currentUrl);
+    const graphUrl = `${baseUrl}/llu/connections/${connId}/graph`;
+    const res = await fetch(graphUrl);
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} (${currentUrl})`);
+      throw new Error(`HTTP ${res.status} (${graphUrl})`);
     }
     const json = await res.json();
-    const lines = parseApiRowsToCsvLines(json);
+    const lines = parseGraphApiToCsvLines(json);
     if (lines.length === 0) {
-      throw new Error(`No parseable glucose row from ${currentUrl}`);
+      throw new Error(`No parseable glucose rows from graph (${graphUrl})`);
     }
-    return lines[0];
+    // graphData is ordered oldest → newest; take the last entry
+    return lines[lines.length - 1];
   }
 
   async function sendServerReading(line: string, count: number): Promise<PredictionRow> {
@@ -512,10 +482,10 @@ export function useAppFunctions() {
         await resetServerSession();
         if (useTimelineApi) {
           await startBenchmark(
-            ['api-current'],
+            ['api-graph'],
             async (_line, count) => {
-              const currentLine = await fetchCurrentTimelineLine();
-              const serverRow = await sendServerReading(currentLine, count);
+              const latestLine = await fetchLatestFromGraph();
+              const serverRow = await sendServerReading(latestLine, count);
               predictionsRef.current.push(serverRow);
             },
             `server (${timelineLabel})`,
@@ -537,18 +507,18 @@ export function useAppFunctions() {
         if (useTimelineApi) {
           await resetServerSession();
           await startBenchmark(
-            ['api-current'],
+            ['api-graph'],
             async (_line, count) => {
-              const currentLine = await fetchCurrentTimelineLine();
+              const latestLine = await fetchLatestFromGraph();
               const tRequestStart = performance.now();
-              NativeSampleModule.addReading(currentLine);
+              NativeSampleModule.addReading(latestLine);
               const tPredictStart = performance.now();
               const result = NativeSampleModule.predict();
               const predictMs = performance.now() - tPredictStart;
               const requestMs = performance.now() - tRequestStart;
 
               requestTimesRef.current.push(requestMs);
-              const [datetime, glucose] = currentLine.split(',');
+              const [datetime, glucose] = latestLine.split(',');
               addLog(
                 `${datetime} glucose=${glucose} → ${isNaN(result) ? '(not ready)' : `${result.toFixed(4)} mg/dL`} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
                 isNaN(result) ? 'warn' : 'ok',
