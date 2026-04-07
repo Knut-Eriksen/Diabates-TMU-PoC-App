@@ -163,8 +163,9 @@ export function useAppFunctions() {
 
   function parseLluGlucoseRow(row: any): string | null {
     if (!row || typeof row !== 'object') return null;
-    const glucose = parseNumberish(row?.ValueInMgPerDl);
-    if (glucose == null) return null;
+    const valueMmol = parseNumberish(row?.Value);
+    if (valueMmol == null) return null;
+    const glucose = valueMmol * 18.018;
 
     const datetime = normalizeLluTimestamp(String(row?.Timestamp ?? row?.FactoryTimestamp ?? ''));
     if (!datetime) return null;
