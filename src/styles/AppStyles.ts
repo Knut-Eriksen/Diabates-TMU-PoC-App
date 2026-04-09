@@ -61,7 +61,35 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  predLabel: { fontSize: 13, color: '#888', marginBottom: 4 },
+  predHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  predLabel: { fontSize: 13, color: '#888' },
+  unitToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    padding: 2,
+  },
+  unitBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  unitBtnActive: {
+    backgroundColor: '#1a237e',
+  },
+  unitBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#888',
+  },
+  unitBtnTextActive: {
+    color: '#fff',
+  },
   predValue: {
     fontSize: 56,
     fontWeight: '700',
