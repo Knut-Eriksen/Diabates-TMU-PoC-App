@@ -16,6 +16,8 @@ import { useAppFunctions } from './src/functions/appFunctions';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'controls' | 'log'>('controls');
+  const [useMmol, setUseMmol] = useState(false);
+
 
   const {
     modelLoaded,
@@ -78,24 +80,44 @@ export default function App() {
 
         {activeTab === 'controls' ? (
           <>
-            {/* Model status pill */}
-            <View style={[styles.pill, modelLoaded ? styles.pillOk : styles.pillWarn]}>
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.pillText}>
-                  {modelLoaded ? '✓ Model loaded' : '✗ Model not loaded'}
-                </Text>
-              )}
+            {/* Model status pill + unit toggle on same row */}
+            <View style={styles.predHeader}>
+              <View style={[styles.pill, modelLoaded ? styles.pillOk : styles.pillWarn, { marginBottom: 0 }]}>
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.pillText}>
+                    {modelLoaded ? '✓ Model loaded' : '✗ Model not loaded'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.unitToggle}>
+                <TouchableOpacity
+                  onPress={() => setUseMmol(false)}
+                  style={[styles.unitBtn, !useMmol && styles.unitBtnActive]}
+                >
+                  <Text style={[styles.unitBtnText, !useMmol && styles.unitBtnTextActive]}>mg/dL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setUseMmol(true)}
+                  style={[styles.unitBtn, useMmol && styles.unitBtnActive]}
+                >
+                  <Text style={[styles.unitBtnText, useMmol && styles.unitBtnTextActive]}>mmol/L</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Prediction display */}
             <View style={styles.predBox}>
               <Text style={styles.predLabel}>Latest prediction</Text>
               <Text style={styles.predValue}>
-                {prediction !== null ? `${prediction.toFixed(4)}` : '—'}
+                {prediction !== null
+                  ? useMmol
+                    ? (prediction / 18.018).toFixed(2)
+                    : prediction.toFixed(1)
+                  : '—'}
               </Text>
-              {prediction !== null && <Text style={styles.predUnit}>mg/dL</Text>}
+              <Text style={styles.predUnit}>{useMmol ? 'mmol/L' : 'mg/dL'}</Text>
               <Text style={styles.predSub}>
                 {readingCount} reading{readingCount !== 1 ? 's' : ''} added
               </Text>
