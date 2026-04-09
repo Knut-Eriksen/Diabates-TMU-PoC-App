@@ -195,7 +195,7 @@ export default function App() {
               />
               <View style={styles.modalSheet}>
                 <ScrollView style={styles.modalList}>
-                  {Array.from({ length: 13 }, (_, i) => i + 1).map(id => {
+                  {Array.from({ length: 14 }, (_, i) => i + 1).map(id => {
                     const name = PATIENT_VAL_FILE_NAMES[id] ?? `patient_${id}_val.csv`;
                     const isSelected = id === selectedPatientId;
                     return (

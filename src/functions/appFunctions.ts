@@ -10,7 +10,7 @@ import {
   DEFAULT_CSV_LINE,
   SERVER_BASE_URL,
   GLUCOSE_TIMELINE_API_BASE_URL,
-  GLUCOSE_CONNECTION_ID,
+  LV_PATIENT_ID,
 } from '../config/patientAssets';
 import { LogEntry, PredictionRow, LOG_CAP } from '../types/types';
 import { useBenchmark } from './benchmarkFunctions';
@@ -195,7 +195,7 @@ export function useAppFunctions() {
   // Fetches the graph endpoint and returns the most recent reading (last in graphData).
   async function fetchLatestFromGraph(): Promise<{ line: string; fetchMs: number }> {
     const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
-    const connId = GLUCOSE_CONNECTION_ID;
+    const connId = LV_PATIENT_ID;
     const graphUrl = `${baseUrl}/llu/connections/${connId}/graph`;
     const tFetchStart = performance.now();
     const res = await fetch(graphUrl);
