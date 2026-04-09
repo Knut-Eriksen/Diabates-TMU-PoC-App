@@ -36,6 +36,5 @@ export const DEFAULT_CSV_LINE =
   '2021-11-07 00:00:00,136.0,0.0,0.0,0.0,93.0,0.01556,0.0,0.0,0.0,0.0';
 
 export const SERVER_BASE_URL = 'https://seniors-conceptual-high-whale.trycloudflare.com/';
-export const GLUCOSE_TIMELINE_API_BASE_URL =
-  'https://jean-heights-wherever-paso.trycloudflare.com/';
+export const GLUCOSE_TIMELINE_API_BASE_URL = 'https://jean-heights-wherever-paso.trycloudflare.com/';
 export const GLUCOSE_CONNECTION_ID = '5d9b1c5f-6c0d-4a1e-8c6e-1c6a2a3d5e3c';
