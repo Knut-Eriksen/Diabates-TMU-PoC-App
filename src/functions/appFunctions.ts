@@ -15,6 +15,8 @@ import {
 import { LogEntry, PredictionRow, LOG_CAP } from '../types/types';
 import { useBenchmark } from './benchmarkFunctions';
 
+const API_TIMELINE_REPEAT_COUNT = 33954;
+
 export function useAppFunctions() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -174,7 +176,7 @@ export function useAppFunctions() {
     const bolus = parseNumberish(row?.insulin) ?? parseNumberish(row?.bolus) ?? 0;
     return buildDefaultCsvLine(datetime, glucose, { meal, bolus });
   }
-
+//
   function parseGraphApiToCsvLines(data: any): string[] {
     const graphRows = Array.isArray(data?.data?.graphData)
       ? data.data.graphData
@@ -187,33 +189,7 @@ export function useAppFunctions() {
   }
 
   async function loadTimelineLines(): Promise<string[]> {
-    if (!useTimelineApi) {
-      return loadValCsvLines(selectedValAsset, selectedValFileName);
-    }
-
-    const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
-    const connId = GLUCOSE_CONNECTION_ID;
-    const graphUrl = `${baseUrl}/llu/connections/${connId}/graph`;
-
-    try {
-      const res = await fetch(graphUrl);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} (${graphUrl})`);
-      }
-
-      const json = await res.json();
-      const lines = parseGraphApiToCsvLines(json);
-      if (lines.length > 0) {
-        addLog(`Loaded ${lines.length} readings from timeline API: ${graphUrl}`, 'ok');
-        return lines;
-      }
-      throw new Error(`No parseable glucose rows from ${graphUrl}`);
-    } catch (e: any) {
-      const lastError = e?.message ?? String(e);
-      throw new Error(
-        `Failed to load timeline from API graph (${GLUCOSE_TIMELINE_API_BASE_URL}). ${lastError}`,
-      );
-    }
+    return loadValCsvLines(selectedValAsset, selectedValFileName);
   }
 
   // Fetches the graph endpoint and returns the most recent reading (last in graphData).
@@ -339,8 +315,10 @@ export function useAppFunctions() {
     }
 
     try {
-      const timelineLines = await loadTimelineLines();
-      const timelineLabel = useTimelineApi ? 'timeline API' : selectedValFileName;
+      const timelineLines = useTimelineApi ? [] : await loadTimelineLines();
+      const timelineLabel = useTimelineApi
+        ? `timeline API /graph latest x${API_TIMELINE_REPEAT_COUNT}`
+        : selectedValFileName;
 
       if (useServer) {
         await resetServerSession();
@@ -351,15 +329,19 @@ export function useAppFunctions() {
       setPrediction(null);
       predictionsRef.current = [];
       addLog(
-        `── Running ${timelineLabel} on ${useServer ? 'server' : 'device'} (${timelineLines.length} rows) ──`,
+        `── Running ${timelineLabel} on ${useServer ? 'server' : 'device'} (${useTimelineApi ? API_TIMELINE_REPEAT_COUNT : timelineLines.length} rows) ──`,
         'info',
       );
 
       let count = 0;
       let lastPrediction: number | null = null;
       const runRequestTimesMs: number[] = [];
+      let firstLineUsed: string | null = null;
 
-      for (const line of timelineLines) {
+      const totalRows = useTimelineApi ? API_TIMELINE_REPEAT_COUNT : timelineLines.length;
+      for (let i = 0; i < totalRows; i++) {
+        const line = useTimelineApi ? await fetchLatestFromGraph() : timelineLines[i];
+        if (!firstLineUsed) firstLineUsed = line;
         count++;
         if (useServer) {
           const serverRow = await sendServerReading(line, count);
@@ -396,7 +378,7 @@ export function useAppFunctions() {
       }
 
       setReadingCount(count);
-      setCsvLine(timelineLines[0]);
+      if (firstLineUsed) setCsvLine(firstLineUsed);
       if (lastPrediction !== null) setPrediction(lastPrediction);
       addLog(formatPerfSummary(`${timelineLabel} run metrics`, runRequestTimesMs), 'info');
       addLog(formatPerfSummary('Session request metrics', requestTimesRef.current), 'info');
