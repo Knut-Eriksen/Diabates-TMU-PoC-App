@@ -10,10 +10,12 @@ import {
   DEFAULT_CSV_LINE,
   SERVER_BASE_URL,
   GLUCOSE_TIMELINE_API_BASE_URL,
-  GLUCOSE_CONNECTION_ID,
+  LV_PATIENT_ID,
 } from '../config/patientAssets';
 import { LogEntry, PredictionRow, LOG_CAP } from '../types/types';
 import { useBenchmark } from './benchmarkFunctions';
+
+const API_TIMELINE_REPEAT_COUNT = 50;
 
 export function useAppFunctions() {
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -174,7 +176,7 @@ export function useAppFunctions() {
     const bolus = parseNumberish(row?.insulin) ?? parseNumberish(row?.bolus) ?? 0;
     return buildDefaultCsvLine(datetime, glucose, { meal, bolus });
   }
-
+//
   function parseGraphApiToCsvLines(data: any): string[] {
     const graphRows = Array.isArray(data?.data?.graphData)
       ? data.data.graphData
@@ -187,41 +189,17 @@ export function useAppFunctions() {
   }
 
   async function loadTimelineLines(): Promise<string[]> {
-    if (!useTimelineApi) {
-      return loadValCsvLines(selectedValAsset, selectedValFileName);
-    }
-
-    const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
-    const connId = GLUCOSE_CONNECTION_ID;
-    const graphUrl = `${baseUrl}/llu/connections/${connId}/graph`;
-
-    try {
-      const res = await fetch(graphUrl);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status} (${graphUrl})`);
-      }
-
-      const json = await res.json();
-      const lines = parseGraphApiToCsvLines(json);
-      if (lines.length > 0) {
-        addLog(`Loaded ${lines.length} readings from timeline API: ${graphUrl}`, 'ok');
-        return lines;
-      }
-      throw new Error(`No parseable glucose rows from ${graphUrl}`);
-    } catch (e: any) {
-      const lastError = e?.message ?? String(e);
-      throw new Error(
-        `Failed to load timeline from API graph (${GLUCOSE_TIMELINE_API_BASE_URL}). ${lastError}`,
-      );
-    }
+    return loadValCsvLines(selectedValAsset, selectedValFileName);
   }
 
   // Fetches the graph endpoint and returns the most recent reading (last in graphData).
-  async function fetchLatestFromGraph(): Promise<string> {
+  async function fetchLatestFromGraph(): Promise<{ line: string; fetchMs: number }> {
     const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
-    const connId = GLUCOSE_CONNECTION_ID;
+    const connId = LV_PATIENT_ID;
     const graphUrl = `${baseUrl}/llu/connections/${connId}/graph`;
+    const tFetchStart = performance.now();
     const res = await fetch(graphUrl);
+    const fetchMs = performance.now() - tFetchStart;
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} (${graphUrl})`);
     }
@@ -231,10 +209,14 @@ export function useAppFunctions() {
       throw new Error(`No parseable glucose rows from graph (${graphUrl})`);
     }
     // graphData is ordered oldest → newest; take the last entry
-    return lines[lines.length - 1];
+    return { line: lines[lines.length - 1], fetchMs };
   }
 
-  async function sendServerReading(line: string, count: number): Promise<PredictionRow> {
+  async function sendServerReading(
+    line: string,
+    count: number,
+    fetchMs?: number,
+  ): Promise<PredictionRow> {
     const headers = { 'Content-Type': 'application/json' };
     const { datetime, payload } = lineToServerPayload(line);
     const extras: string[] = [];
@@ -253,20 +235,23 @@ export function useAppFunctions() {
     const pred = data.prediction as number | null;
     const predictMs = data.predict_ms as number | null;
     const status = data.message ?? '';
+    const predictMsFinite =
+      predictMs != null && Number.isFinite(predictMs) ? Number(predictMs) : null;
 
-    requestTimesRef.current.push(latencyMs);
+    // For API timeline mode, include Libre fetch in final request metrics.
+    requestTimesRef.current.push(latencyMs + (fetchMs ?? 0));
     setReadingCount(count);
 
     if (pred != null && !isNaN(pred)) {
       setPrediction(pred);
       addLog(
-        `${datetime} glucose=${payload.glucose}${extrasStr} → ${pred.toFixed(4)} mg/dL (status="${status}" request=${latencyMs.toFixed(2)}ms predict=${predictMs ?? '—'}ms)`,
+        `${datetime} glucose=${payload.glucose}${extrasStr} → ${pred.toFixed(4)} mg/dL (status="${status}"${fetchMs != null ? ` fetch=${fetchMs.toFixed(2)}ms` : ''} request=${latencyMs.toFixed(2)}ms predict=${predictMsFinite != null ? predictMsFinite.toFixed(2) : '—'}ms)`,
         'ok',
       );
     } else {
       setPrediction(null);
       addLog(
-        `${datetime} glucose=${payload.glucose}${extrasStr} → (not ready) (status="${status}" request=${latencyMs.toFixed(2)}ms predict=${predictMs ?? '—'}ms)`,
+        `${datetime} glucose=${payload.glucose}${extrasStr} → (not ready) (status="${status}"${fetchMs != null ? ` fetch=${fetchMs.toFixed(2)}ms` : ''} request=${latencyMs.toFixed(2)}ms predict=${predictMsFinite != null ? predictMsFinite.toFixed(2) : '—'}ms)`,
         'warn',
       );
     }
@@ -275,8 +260,9 @@ export function useAppFunctions() {
       datetime,
       glucose: String(payload.glucose),
       prediction: pred != null && !isNaN(pred) ? pred.toFixed(4) : '',
+      fetchMs: fetchMs != null ? fetchMs.toFixed(2) : '',
       requestMs: latencyMs.toFixed(2),
-      predictMs: predictMs != null ? String(predictMs) : '',
+      predictMs: predictMsFinite != null ? predictMsFinite.toFixed(2) : '',
     };
   }
 
@@ -339,8 +325,10 @@ export function useAppFunctions() {
     }
 
     try {
-      const timelineLines = await loadTimelineLines();
-      const timelineLabel = useTimelineApi ? 'timeline API' : selectedValFileName;
+      const timelineLines = useTimelineApi ? [] : await loadTimelineLines();
+      const timelineLabel = useTimelineApi
+        ? `timeline API /graph latest x${API_TIMELINE_REPEAT_COUNT}`
+        : selectedValFileName;
 
       if (useServer) {
         await resetServerSession();
@@ -351,19 +339,30 @@ export function useAppFunctions() {
       setPrediction(null);
       predictionsRef.current = [];
       addLog(
-        `── Running ${timelineLabel} on ${useServer ? 'server' : 'device'} (${timelineLines.length} rows) ──`,
+        `── Running ${timelineLabel} on ${useServer ? 'server' : 'device'} (${useTimelineApi ? API_TIMELINE_REPEAT_COUNT : timelineLines.length} rows) ──`,
         'info',
       );
 
       let count = 0;
       let lastPrediction: number | null = null;
       const runRequestTimesMs: number[] = [];
+      let firstLineUsed: string | null = null;
 
-      for (const line of timelineLines) {
+      const totalRows = useTimelineApi ? API_TIMELINE_REPEAT_COUNT : timelineLines.length;
+      for (let i = 0; i < totalRows; i++) {
+        let line = timelineLines[i];
+        let fetchMs: number | undefined;
+        if (useTimelineApi) {
+          const latest = await fetchLatestFromGraph();
+          line = latest.line;
+          fetchMs = latest.fetchMs;
+        }
+        if (!firstLineUsed) firstLineUsed = line;
         count++;
         if (useServer) {
-          const serverRow = await sendServerReading(line, count);
-          runRequestTimesMs.push(Number(serverRow.requestMs));
+          const serverRow = await sendServerReading(line, count, fetchMs);
+          runRequestTimesMs.push(Number(serverRow.requestMs) + (fetchMs ?? 0));
+          const serverPredictMs = Number(serverRow.predictMs);
           predictionsRef.current.push(serverRow);
           if (serverRow.prediction) lastPrediction = Number(serverRow.prediction);
         } else {
@@ -375,30 +374,38 @@ export function useAppFunctions() {
           const predictMs = performance.now() - tPredictStart;
           const requestMs = performance.now() - tRequestStart;
 
-          runRequestTimesMs.push(requestMs);
-          requestTimesRef.current.push(requestMs);
+          runRequestTimesMs.push(requestMs + (fetchMs ?? 0));
+          requestTimesRef.current.push(requestMs + (fetchMs ?? 0));
 
           const [datetime, glucose] = line.split(',');
           addLog(
-            `${datetime} glucose=${glucose} → ${isNaN(result) ? '(not ready)' : `${result.toFixed(4)} mg/dL`} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
+            `${datetime} glucose=${glucose} → ${isNaN(result) ? '(not ready)' : `${result.toFixed(4)} mg/dL`} (${fetchMs != null ? `fetch=${fetchMs.toFixed(2)}ms ` : ''}request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
             isNaN(result) ? 'warn' : 'ok',
           );
           predictionsRef.current.push({
             datetime,
             glucose,
             prediction: isNaN(result) ? '' : result.toFixed(4),
+            fetchMs: fetchMs != null ? fetchMs.toFixed(2) : '',
             requestMs: requestMs.toFixed(2),
             predictMs: predictMs.toFixed(2),
           });
 
-          if (!isNaN(result)) lastPrediction = result;
+          setReadingCount(count);
+          if (!isNaN(result)) {
+            lastPrediction = result;
+            setPrediction(result);
+          } else {
+            setPrediction(null);
+          }
         }
       }
 
       setReadingCount(count);
-      setCsvLine(timelineLines[0]);
+      if (firstLineUsed) setCsvLine(firstLineUsed);
       if (lastPrediction !== null) setPrediction(lastPrediction);
       addLog(formatPerfSummary(`${timelineLabel} run metrics`, runRequestTimesMs), 'info');
+      addLog('', 'info');
       addLog(formatPerfSummary('Session request metrics', requestTimesRef.current), 'info');
     } catch (e: any) {
       addLog(`Error: ${e?.message ?? e}`, 'err');
@@ -484,8 +491,8 @@ export function useAppFunctions() {
           await startBenchmark(
             ['api-graph'],
             async (_line, count) => {
-              const latestLine = await fetchLatestFromGraph();
-              const serverRow = await sendServerReading(latestLine, count);
+              const { line: latestLine, fetchMs } = await fetchLatestFromGraph();
+              const serverRow = await sendServerReading(latestLine, count, fetchMs);
               predictionsRef.current.push(serverRow);
             },
             `server (${timelineLabel})`,
@@ -509,7 +516,7 @@ export function useAppFunctions() {
           await startBenchmark(
             ['api-graph'],
             async (_line, count) => {
-              const latestLine = await fetchLatestFromGraph();
+              const { line: latestLine, fetchMs } = await fetchLatestFromGraph();
               const tRequestStart = performance.now();
               NativeSampleModule.addReading(latestLine);
               const tPredictStart = performance.now();
@@ -517,16 +524,17 @@ export function useAppFunctions() {
               const predictMs = performance.now() - tPredictStart;
               const requestMs = performance.now() - tRequestStart;
 
-              requestTimesRef.current.push(requestMs);
+              requestTimesRef.current.push(requestMs + fetchMs);
               const [datetime, glucose] = latestLine.split(',');
               addLog(
-                `${datetime} glucose=${glucose} → ${isNaN(result) ? '(not ready)' : `${result.toFixed(4)} mg/dL`} (request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
+                `${datetime} glucose=${glucose} → ${isNaN(result) ? '(not ready)' : `${result.toFixed(4)} mg/dL`} (fetch=${fetchMs.toFixed(2)}ms request=${requestMs.toFixed(2)}ms predict=${predictMs.toFixed(2)}ms)`,
                 isNaN(result) ? 'warn' : 'ok',
               );
               predictionsRef.current.push({
                 datetime,
                 glucose,
                 prediction: isNaN(result) ? '' : result.toFixed(4),
+                fetchMs: fetchMs.toFixed(2),
                 requestMs: requestMs.toFixed(2),
                 predictMs: predictMs.toFixed(2),
               });
@@ -568,9 +576,10 @@ export function useAppFunctions() {
       const fileName = `predictions_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.csv`;
       const destPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
 
-      const header = 'datetime,glucose,prediction,request_ms,predict_ms';
+      const header = 'datetime,glucose,prediction,fetch_ms,request_ms,predict_ms';
       const rows = predictionsRef.current.map(
-        row => `${row.datetime},${row.glucose},${row.prediction},${row.requestMs},${row.predictMs}`,
+        row =>
+          `${row.datetime},${row.glucose},${row.prediction},${row.fetchMs ?? ''},${row.requestMs},${row.predictMs}`,
       );
       await RNFS.writeFile(destPath, `${header}\n${rows.join('\n')}\n`, 'utf8');
       addLog(`Saved predictions CSV: ${destPath}`, 'ok');

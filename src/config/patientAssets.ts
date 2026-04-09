@@ -14,6 +14,7 @@ export const PATIENT_VAL_ASSETS: Record<number, any> = {
   11: require('../../patient_val/patient_11_val.csv'),
   12: require('../../patient_val/patient_12_val.csv'),
   13: require('../../patient_val/patient_1_val_24h.csv'),
+  14: require('../../patient_val/val.csv'),
 };
 
 export const PATIENT_VAL_FILE_NAMES: Record<number, string> = {
@@ -30,6 +31,7 @@ export const PATIENT_VAL_FILE_NAMES: Record<number, string> = {
   11: 'patient_11_val.csv',
   12: 'patient_12_val.csv',
   13: 'patient_1_val_24h.csv',
+  14: 'val.csv',
 };
 
 export const DEFAULT_CSV_LINE =
@@ -37,4 +39,4 @@ export const DEFAULT_CSV_LINE =
 
 export const SERVER_BASE_URL = 'https://seniors-conceptual-high-whale.trycloudflare.com/';
 export const GLUCOSE_TIMELINE_API_BASE_URL = 'https://jean-heights-wherever-paso.trycloudflare.com/';
-export const GLUCOSE_CONNECTION_ID = '5d9b1c5f-6c0d-4a1e-8c6e-1c6a2a3d5e3c';
+export const LV_PATIENT_ID = '5d9b1c5f-6c0d-4a1e-8c6e-1c6a2a3d5e3c';
