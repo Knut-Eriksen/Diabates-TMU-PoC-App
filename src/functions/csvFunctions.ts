@@ -75,5 +75,5 @@ export function formatPerfSummary(label: string, latenciesMs: number[]): string 
   const p99 = percentile(latenciesMs, 99);
   const rps = totalMs > 0 ? (latenciesMs.length * 1000) / totalMs : 0;
 
-  return `${label}: avg=${avgMs.toFixed(2)}ms p50=${p50.toFixed(2)}ms p95=${p95.toFixed(2)}ms p99=${p99.toFixed(2)}ms total_request_time=${totalMs.toFixed(2)}ms rps=${rps.toFixed(2)}`;
+  return `${label}:\navg=${avgMs.toFixed(2)}ms\np50=${p50.toFixed(2)}ms\np95=${p95.toFixed(2)}ms\np99=${p99.toFixed(2)}ms\ntotal_request_time=${totalMs.toFixed(2)}ms\nrps=${rps.toFixed(2)}`;
 }

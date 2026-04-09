@@ -4,6 +4,7 @@ export type PredictionRow = {
   datetime: string;
   glucose: string;
   prediction: string;
+  fetchMs?: string;
   requestMs: string;
   predictMs: string;
 };
