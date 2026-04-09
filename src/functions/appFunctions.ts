@@ -15,7 +15,7 @@ import {
 import { LogEntry, PredictionRow, LOG_CAP } from '../types/types';
 import { useBenchmark } from './benchmarkFunctions';
 
-const API_TIMELINE_REPEAT_COUNT = 50;
+const API_TIMELINE_REPEAT_COUNT = 33994;
 
 export function useAppFunctions() {
   const [modelLoaded, setModelLoaded] = useState(false);
