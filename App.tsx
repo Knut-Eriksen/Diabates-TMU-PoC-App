@@ -13,9 +13,10 @@ import {
 import { styles, logLineStyle } from './src/styles/AppStyles';
 import { PATIENT_VAL_FILE_NAMES } from './src/config/patientAssets';
 import { useAppFunctions } from './src/functions/appFunctions';
+import { DashboardTab } from './src/screens/DashboardTab';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'controls' | 'log'>('controls');
+  const [activeTab, setActiveTab] = useState<'controls' | 'log' | 'dashboard'>('controls');
   const [useMmol, setUseMmol] = useState(false);
 
 
@@ -47,6 +48,11 @@ export default function App() {
     benchmarkReadingsDone,
     benchmarkTotalReadings,
     benchmarkElapsedS,
+    dashboardGraphData,
+    dashboardConnection,
+    dashboardLoading,
+    dashboardError,
+    handleDashboardRefresh,
   } = useAppFunctions();
 
   return (
@@ -69,6 +75,14 @@ export default function App() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 'dashboard' && styles.tabBtnActive]}
+            onPress={() => setActiveTab('dashboard')}
+          >
+            <Text style={[styles.tabBtnText, activeTab === 'dashboard' && styles.tabBtnTextActive]}>
+              Dashboard
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'log' && styles.tabBtnActive]}
             onPress={() => setActiveTab('log')}
           >
@@ -78,7 +92,17 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {activeTab === 'controls' ? (
+        {activeTab === 'dashboard' ? (
+          <DashboardTab
+            graphData={dashboardGraphData}
+            connection={dashboardConnection}
+            loading={dashboardLoading}
+            error={dashboardError}
+            prediction={prediction}
+            modelLoaded={modelLoaded}
+            onRefresh={handleDashboardRefresh}
+          />
+        ) : activeTab === 'controls' ? (
           <>
             {/* Model status pill + unit toggle on same row */}
             <View style={styles.predHeader}>
@@ -225,11 +249,11 @@ export default function App() {
             {/* Buttons */}
             <View style={styles.buttonRow}>
               <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary, !modelLoaded && styles.btnDisabled]}
+                style={[styles.btn, styles.btnSecondary, !modelLoaded && styles.btnDisabled]}
                 onPress={handleRunTimeline}
                 disabled={!modelLoaded}
               >
-                <Text style={styles.btnText}>Run Timeline</Text>
+                <Text style={[styles.btnText, { color: '#333' }]}>Run Timeline</Text>
               </TouchableOpacity>
 
               <TouchableOpacity

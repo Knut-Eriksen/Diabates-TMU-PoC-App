@@ -588,6 +588,82 @@ export function useAppFunctions() {
     }
   }
 
+  // ── Dashboard: fetch graph + run all readings through model ──────────────────
+
+  const [dashboardGraphData, setDashboardGraphData] = useState<any[]>([]);
+  const [dashboardConnection, setDashboardConnection] = useState<any>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  async function handleDashboardRefresh() {
+    if (!modelLoaded) {
+      setDashboardError('Model is not loaded yet. Please wait and try again.');
+      return;
+    }
+    setDashboardLoading(true);
+    setDashboardError(null);
+    try {
+      const baseUrl = normalizeApiBaseUrl(GLUCOSE_TIMELINE_API_BASE_URL);
+      const graphUrl = `${baseUrl}/llu/connections/${LV_PATIENT_ID}/graph`;
+      const res = await fetch(graphUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+
+      const conn = json?.data?.connection ?? null;
+      const graphRows: any[] = Array.isArray(json?.data?.graphData) ? json.data.graphData : [];
+      setDashboardConnection(conn);
+      setDashboardGraphData(graphRows);
+
+      const lines = graphRows
+        .map((row: any) => parseLluGlucoseRow(row))
+        .filter((line): line is string => Boolean(line));
+
+      if (lines.length === 0) {
+        setDashboardError('No parseable readings in graph data.');
+        return;
+      }
+
+      addLog(`── Dashboard: running ${lines.length} graph readings on ${useServer ? 'server' : 'device'} ──`, 'info');
+
+      if (useServer) {
+        await resetServerSession();
+        let count = 0;
+        for (const line of lines) {
+          count++;
+          const row = await sendServerReading(line, count);
+          predictionsRef.current.push(row);
+        }
+      } else {
+        NativeSampleModule.reset();
+        setReadingCount(0);
+        setPrediction(null);
+        let count = 0;
+        let lastPred: number | null = null;
+        for (const line of lines) {
+          count++;
+          NativeSampleModule.addReading(line);
+          const result = NativeSampleModule.predict();
+          setReadingCount(count);
+          if (!isNaN(result)) {
+            lastPred = result;
+            setPrediction(result);
+          }
+        }
+        if (lastPred !== null) {
+          addLog(`Dashboard prediction after ${count} readings: ${lastPred.toFixed(4)} mg/dL`, 'ok');
+        } else {
+          addLog(`Dashboard: no prediction ready after ${count} readings.`, 'warn');
+        }
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      setDashboardError(msg);
+      addLog(`Dashboard error: ${msg}`, 'err');
+    } finally {
+      setDashboardLoading(false);
+    }
+  }
+
   return {
     // state
     modelLoaded,
@@ -620,5 +696,11 @@ export function useAppFunctions() {
     benchmarkReadingsDone,
     benchmarkTotalReadings,
     benchmarkElapsedS,
+    // dashboard
+    dashboardGraphData,
+    dashboardConnection,
+    dashboardLoading,
+    dashboardError,
+    handleDashboardRefresh,
   };
 }
