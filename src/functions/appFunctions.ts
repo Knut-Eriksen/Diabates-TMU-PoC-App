@@ -176,7 +176,108 @@ export function useAppFunctions() {
     const bolus = parseNumberish(row?.insulin) ?? parseNumberish(row?.bolus) ?? 0;
     return buildDefaultCsvLine(datetime, glucose, { meal, bolus });
   }
-//
+
+
+  // Parses timestamp froom LibreLink up
+  function parseLluTimestampMs(raw: string): number {
+    const m = raw.match(
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?/i,
+    );
+    if (m) {
+      let h = parseInt(m[4], 10);
+      const ampm = (m[7] ?? '').toUpperCase();
+      if (ampm === 'AM' && h === 12) h = 0;
+      if (ampm === 'PM' && h !== 12) h += 12;
+      return new Date(+m[3], +m[1] - 1, +m[2], h, +m[5], +m[6]).getTime();
+    }
+    return new Date(raw).getTime();
+  }
+
+  // Formats back into LibreLink format
+  function formatLluTimestamp(d: Date): string {
+    const mm = d.getMonth() + 1;
+    const dd = d.getDate();
+    const yyyy = d.getFullYear();
+    let h = d.getHours();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${mm}/${dd}/${yyyy} ${h}:${mi}:${s} ${ampm}`;
+  }
+
+  // creates fake glucose reading
+  function buildSyntheticPoint(template: any, ts: number, valueMmol: number): any {
+    return {
+      Timestamp: formatLluTimestamp(new Date(ts)),
+      Value: valueMmol,
+      ValueInMgPerDl: valueMmol * 18.018,
+      MeasurementColor: template?.MeasurementColor ?? 1,
+      isHigh: false,
+      isLow: false,
+      _interpolated: true,
+      _ts: ts,
+    };
+  }
+
+  // Returns the 7 points (T-30 … T) at 5-min intervals filling any missing
+  // slots via linear interpolation, plus just the synthesised fill points for
+  // the chart.
+  function buildLast30MinWindow(
+    graphData: any[],
+    latest: any,
+  ): { window: any[]; fills: any[] } {
+    const STEP_MS = 5 * 60 * 1000;
+    const TOL_MS = 90 * 1000;
+
+    const all = [
+      ...graphData.map(r => ({
+        ...r,
+        _ts: parseLluTimestampMs(String(r?.Timestamp ?? '')),
+      })),
+      ...(latest
+        ? [{ ...latest, _ts: parseLluTimestampMs(String(latest?.Timestamp ?? '')) }]
+        : []),
+    ]
+      .filter(r => Number.isFinite(r._ts))
+      .sort((a, b) => a._ts - b._ts);
+
+    if (all.length === 0) return { window: [], fills: [] };
+    const latestTs = all[all.length - 1]._ts;
+
+    const window: any[] = [];
+    const fills: any[] = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const slotTs = latestTs - i * STEP_MS;
+      const real = all.find(p => Math.abs(p._ts - slotTs) <= TOL_MS);
+      if (real) {
+        window.push(real);
+        continue;
+      }
+      let before: any = null;
+      let after: any = null;
+      for (const p of all) {
+        if (p._ts <= slotTs) before = p;
+        if (p._ts >= slotTs && !after) after = p;
+      }
+      if (!before || !after || before._ts === after._ts) {
+        const near = before ?? after;
+        if (!near) continue;
+        const synth = buildSyntheticPoint(near, slotTs, near.Value);
+        window.push(synth);
+        fills.push(synth);
+        continue;
+      }
+      const frac = (slotTs - before._ts) / (after._ts - before._ts);
+      const valueMmol = before.Value + frac * (after.Value - before.Value);
+      const synth = buildSyntheticPoint(before, slotTs, valueMmol);
+      window.push(synth);
+      fills.push(synth);
+    }
+    return { window, fills };
+  }
+
   function parseGraphApiToCsvLines(data: any): string[] {
     const graphRows = Array.isArray(data?.data?.graphData)
       ? data.data.graphData
@@ -611,10 +712,25 @@ export function useAppFunctions() {
 
       const conn = json?.data?.connection ?? null;
       const graphRows: any[] = Array.isArray(json?.data?.graphData) ? json.data.graphData : [];
-      setDashboardConnection(conn);
-      setDashboardGraphData(graphRows);
+      const latestMeasurement = conn?.glucoseMeasurement ?? null;
 
-      const lines = graphRows
+      const { window: windowPoints, fills } = buildLast30MinWindow(graphRows, latestMeasurement);
+
+      console.log('── Dashboard refresh: 7-point 30-min window ──');
+      windowPoints.forEach((p, i) => {
+        const tMinus = (6 - i) * 5;
+        console.log(
+          `T-${String(tMinus).padStart(2, '0')}  ${p?.Timestamp}  value=${p?.Value}  mg/dL=${(Number(p?.Value) * 18.018).toFixed(1)}${p?._interpolated ? '  (interpolated)' : ''}`,
+        );
+      });
+
+      const combinedGraph: any[] = [...graphRows, ...fills];
+      if (latestMeasurement) combinedGraph.push(latestMeasurement);
+
+      setDashboardConnection(conn);
+      setDashboardGraphData(combinedGraph);
+
+      const lines = windowPoints
         .map((row: any) => parseLluGlucoseRow(row))
         .filter((line): line is string => Boolean(line));
 
@@ -623,7 +739,10 @@ export function useAppFunctions() {
         return;
       }
 
-      addLog(`── Dashboard: running ${lines.length} graph readings on ${useServer ? 'server' : 'device'} ──`, 'info');
+      addLog(
+        `── Dashboard: running ${lines.length} readings (30-min window, ${fills.length} interpolated) on ${useServer ? 'server' : 'device'} ──`,
+        'info',
+      );
 
       if (useServer) {
         await resetServerSession();
