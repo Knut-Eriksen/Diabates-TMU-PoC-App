@@ -25,6 +25,7 @@ export function useBenchmark(
   const startTimeRef = useRef(0);
   const perfFilePathRef = useRef('');
   const readingInProgressRef = useRef(false);
+  const inferenceActiveRef = useRef(false);
 
   // Stop both timers
   function stopIntervals() {
@@ -70,7 +71,7 @@ export function useBenchmark(
     perfFilePathRef.current = `${RNFS.DocumentDirectoryPath}/benchmark_perf_${ts}.csv`;
     await RNFS.writeFile(
       perfFilePathRef.current,
-      'timestamp,cpu_pct,battery_pct,memory_mb\n',
+      'timestamp,cpu_pct,battery_pct,memory_mb,inference\n',
       'utf8',
     );
 
@@ -85,7 +86,9 @@ export function useBenchmark(
       const battery = await DeviceInfo.getBatteryLevel() * 100;
       const memory = (await DeviceInfo.getUsedMemory()) / (1024 * 1024);
       const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      const row = `${timestamp},${cpu.toFixed(2)},${battery.toFixed(1)},${memory.toFixed(2)}\n`;
+      const inference = inferenceActiveRef.current ? 1 : 0;
+      if (inference) inferenceActiveRef.current = false;
+      const row = `${timestamp},${cpu.toFixed(2)},${battery.toFixed(1)},${memory.toFixed(2)},${inference}\n`;
       await RNFS.appendFile(perfFilePathRef.current, row, 'utf8');
       setElapsedS(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 1000);
@@ -109,7 +112,8 @@ export function useBenchmark(
       const line = lines[lineIndexRef.current % lines.length];
       lineIndexRef.current++;
 
-      // Adds the reading and predicits
+      // Adds the reading and predicts
+      inferenceActiveRef.current = true;
       if (runBenchmarkReading) {
         await runBenchmarkReading(line, count);
       } else {

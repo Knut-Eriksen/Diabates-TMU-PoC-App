@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -69,9 +69,10 @@ interface ChartProps {
   targetLow: number;
   targetHigh: number;
   predictionMgdl: number | null;
+  rangeHours: number;
 }
 
-const GlucoseChart: React.FC<ChartProps> = ({ data, targetLow, targetHigh, predictionMgdl }) => {
+const GlucoseChart: React.FC<ChartProps> = ({ data, targetLow, targetHigh, predictionMgdl, rangeHours }) => {
   const [w, setW] = useState(300);
   const [h, setH] = useState(200);
 
@@ -105,9 +106,9 @@ const GlucoseChart: React.FC<ChartProps> = ({ data, targetLow, targetHigh, predi
   const tLowY = toY(tLowMmol);
   const nowX = toX(tMax);
 
-  // Time labels every 2 h
+  // Time labels: every 1h for short ranges, every 2h for longer ones
   const timeLabels: { x: number; label: string }[] = [];
-  const step = 2 * 3600000;
+  const step = (rangeHours <= 4 ? 1 : 2) * 3600000;
   for (let t = Math.ceil(tMin / step) * step; t <= tMax; t += step) {
     const d = new Date(t);
     timeLabels.push({
@@ -211,9 +212,21 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 export const DashboardTab: React.FC<Props> = ({
   graphData, connection, loading, error, prediction, modelLoaded, onRefresh,
 }) => {
+  const [rangeHours, setRangeHours] = useState<4 | 12>(12);
   const hasAutoRefreshed = React.useRef(false);
   const onRefreshRef = React.useRef(onRefresh);
   useEffect(() => { onRefreshRef.current = onRefresh; });
+
+  const filteredGraphData = useMemo(() => {
+    if (!graphData.length) return graphData;
+    const withTs = graphData
+      .map(p => ({ p, ts: parseTs(p.Timestamp) }))
+      .filter(x => !isNaN(x.ts));
+    if (!withTs.length) return graphData;
+    const latestTs = withTs.reduce((m, x) => (x.ts > m ? x.ts : m), withTs[0].ts);
+    const cutoff = latestTs - rangeHours * 3600000;
+    return withTs.filter(x => x.ts >= cutoff).map(x => x.p);
+  }, [graphData, rangeHours]);
 
   useEffect(() => {
     if (modelLoaded && !hasAutoRefreshed.current) {
@@ -252,17 +265,35 @@ export const DashboardTab: React.FC<Props> = ({
         <Text style={d.error}>Loading model…</Text>
       )}
 
-      {/* ── Chart (fixed shorter height) ── */}
+      {/* ── Range selector ── */}
+      <View style={d.rangeRow}>
+        {([4, 12] as const).map(h => {
+          const active = rangeHours === h;
+          return (
+            <TouchableOpacity
+              key={h}
+              onPress={() => setRangeHours(h)}
+              style={[d.rangeBtn, active && d.rangeBtnActive]}
+              activeOpacity={0.8}
+            >
+              <Text style={[d.rangeBtnText, active && d.rangeBtnTextActive]}>{h}h</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* ── Chart ── */}
       <View style={d.chartWrap}>
         {loading && !graphData.length && (
           <ActivityIndicator color="#1a237e" style={{ marginTop: 40 }} />
         )}
-        {graphData.length > 1 && (
+        {filteredGraphData.length > 1 && (
           <GlucoseChart
-            data={graphData}
+            data={filteredGraphData}
             targetLow={targetLow}
             targetHigh={targetHigh}
             predictionMgdl={prediction}
+            rangeHours={rangeHours}
           />
         )}
       </View>
@@ -326,14 +357,28 @@ const d = StyleSheet.create({
 
   error: { color: '#c62828', fontSize: 12, marginBottom: 8 },
 
-  // Fixed shorter height — not flex
   chartWrap: {
-    height: 180,
+    height: 280,
     borderRadius: 10,
     backgroundColor: '#fafafa',
     overflow: 'hidden',
     marginBottom: 20,
   },
+
+  rangeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  rangeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+  },
+  rangeBtnActive: { backgroundColor: '#1a237e' },
+  rangeBtnText: { fontSize: 12, fontWeight: '600', color: '#666' },
+  rangeBtnTextActive: { color: '#fff' },
 
   readingBlock: { marginBottom: 16 },
   predBlock: {
