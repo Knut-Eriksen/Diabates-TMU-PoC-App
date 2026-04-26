@@ -48,11 +48,11 @@
   "pos_mask_file": "pos_mask.bin",
   "neg_mask_file": "neg_mask.bin",
   "mask_dtype": "uint64",
-  "n_clauses": 500,
+  "n_clauses": 5000,
   "n_words": 3,
   "clause_weights_file": "clause_weights.bin",
   "head_dtype": "float32",
-  "t_param": 5000,
+  "t_param": 50000,
   "min_y": 0.0,
   "max_y": 477.0,
   "hourly_mean": {
