@@ -87,7 +87,8 @@ const GlucoseChart: React.FC<ChartProps> = ({ data, targetLow, targetHigh, predi
   if (pts.length < 2) return null;
 
   const tMin = pts[0].ts;
-  const tMax = pts[pts.length - 1].ts;
+  const latestTs = pts[pts.length - 1].ts;
+  const tMax = latestTs + 30 * 60 * 1000; // extend axis 30 min for prediction
   const tRange = tMax - tMin || 1;
 
   // Use Value (mmol/L) directly; convert mg/dL targets
@@ -104,7 +105,7 @@ const GlucoseChart: React.FC<ChartProps> = ({ data, targetLow, targetHigh, predi
 
   const tHighY = toY(tHighMmol);
   const tLowY = toY(tLowMmol);
-  const nowX = toX(tMax);
+  const nowX = toX(latestTs);
 
   // Time labels: every 1h for short ranges, every 2h for longer ones
   const timeLabels: { x: number; label: string }[] = [];
@@ -167,13 +168,27 @@ const GlucoseChart: React.FC<ChartProps> = ({ data, targetLow, targetHigh, predi
         );
       })}
 
-      {/* Prediction marker on now-line */}
-      {predictionMgdl != null && (() => {
-        const pY = toY(predictionMgdl / 18.018);
+      {/* Prediction marker – diagonal line from latest reading to prediction dot */}
+      {predictionMgdl != null && pts.length > 0 && (() => {
+        const lastPt = pts[pts.length - 1];
+        const x1 = nowX;
+        const y1 = toY(lastPt.Value);
+        const x2 = toX(tMax);
+        const y2 = toY(predictionMgdl / 18.018);
+        const dx = x2 - x1; const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
         return (
           <>
-            <View style={{ position: 'absolute', left: PAD.l, top: pY, width: iW, height: 1, backgroundColor: 'rgba(245,124,0,0.3)' }} />
-            <View style={{ position: 'absolute', left: nowX - 6, top: pY - 6, width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', borderWidth: 2.5, borderColor: '#f57c00' }} />
+            <View style={{
+              position: 'absolute',
+              left: (x1 + x2) / 2 - len / 2,
+              top: (y1 + y2) / 2 - 1.5,
+              width: len, height: 3,
+              backgroundColor: '#f57c00',
+              opacity: 0.6,
+              transform: [{ rotate: `${Math.atan2(dy, dx) * 180 / Math.PI}deg` }],
+            }} />
+            <View style={{ position: 'absolute', left: x2 - 6, top: y2 - 6, width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', borderWidth: 2.5, borderColor: '#f57c00' }} />
           </>
         );
       })()}
